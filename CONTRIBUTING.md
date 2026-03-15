@@ -5,7 +5,7 @@ Thanks for your interest in contributing! Here's how to get started.
 ## Setup
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/repomedic.git
+git clone https://github.com/MBemera/repomedic.git
 cd repomedic
 python3 -m venv .venv
 source .venv/bin/activate

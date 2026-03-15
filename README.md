@@ -53,7 +53,7 @@ RepoMedic is a Python CLI tool that performs automated diagnostics on local dire
 ### Install
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/repomedic.git
+git clone https://github.com/MBemera/repomedic.git
 cd repomedic
 pip install -e .
 ```
