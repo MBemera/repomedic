@@ -50,6 +50,21 @@ def test_print_rich_no_findings():
     assert "healthy" in output.lower() or "No issues" in output
 
 
+def test_print_rich_no_findings_but_analyzer_failed():
+    # No findings + a failed analyzer must NOT report "healthy" — that is the
+    # `repomedic run demo.ts` case where the analyzer could not run at all.
+    report = ScanReport(target="/tmp/test", results=[
+        AnalyzerResult(analyzer="runtime", error="Unsupported script type '.ts'"),
+    ])
+    report.build_summary()
+    buf = StringIO()
+    console = Console(file=buf, force_terminal=True)
+    print_rich(report, console)
+    output = buf.getvalue()
+    assert "healthy" not in output.lower()
+    assert "could not run" in output.lower()
+
+
 def test_print_rich_with_findings():
     report = ScanReport(target="/tmp/test", results=[
         AnalyzerResult(analyzer="test", findings=[

@@ -114,7 +114,15 @@ def _filter_to_files(report: ScanReport, only_files: set[str]) -> None:
 
 
 def _truncate(report: ScanReport, max_findings: int) -> None:
-    """Keep the *max_findings* most severe findings; record how many were dropped."""
+    """Keep only the *max_findings* most severe findings; record how many were dropped.
+
+    Each finding is tagged with (severity_rank, discovery_order). Sorting by that
+    pair puts errors first, then warnings, then infos, and — because the second
+    element is a simple counter — preserves the original order within each
+    severity so the output is deterministic. We then keep that many findings and
+    drop the rest, matching by object identity (id()) since two findings can be
+    otherwise equal.
+    """
     ranked: list[tuple[int, int, Finding]] = []
     order = 0
     for r in report.results:

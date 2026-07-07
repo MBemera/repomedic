@@ -150,3 +150,42 @@ def test_run_reports_runtime_error(tmp_path):
     data = json.loads(result.stdout)
     findings = data["results"][0]["findings"]
     assert any("ValueError" in f["title"] for f in findings)
+
+
+def test_run_unsupported_script_exits_one(tmp_path):
+    # A .ts file has no registered interpreter, so the analyzer returns an
+    # error with zero findings. Per the docs contract that must still be exit 1,
+    # not 0 (regression test for the report.summary.errors-only exit check).
+    script = tmp_path / "demo.ts"
+    script.write_text("console.log('x')\n")
+    result = runner.invoke(app, ["run", str(script)])
+    assert result.exit_code == 1
+
+
+def test_run_unsupported_script_reports_error(tmp_path):
+    # JSON stays pure on stdout and carries the analyzer error; the human-
+    # readable message goes to stderr so it is never silently swallowed.
+    script = tmp_path / "demo.ts"
+    script.write_text("console.log('x')\n")
+    result = runner.invoke(app, ["run", str(script), "-o", "json"])
+    assert result.exit_code == 1
+    data = json.loads(result.stdout)
+    assert data["results"][0]["error"] is not None
+    assert "Could not run script" in result.stderr
+
+
+def test_run_missing_interpreter_exits_one(tmp_path, monkeypatch):
+    # Simulate the interpreter being absent (run() returns NOT_FOUND): the
+    # analyzer reports an error with no findings, which must still exit 1.
+    import repomedic.analyzers.runtime as runtime_mod
+    from repomedic.utils.process import NOT_FOUND, ProcessResult
+
+    monkeypatch.setattr(
+        runtime_mod,
+        "run",
+        lambda cmd, **kw: ProcessResult(returncode=NOT_FOUND, stdout="", stderr="not found"),
+    )
+    script = tmp_path / "app.py"
+    script.write_text("print('hi')\n")
+    result = runner.invoke(app, ["run", str(script)])
+    assert result.exit_code == 1

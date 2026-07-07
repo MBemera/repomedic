@@ -60,6 +60,9 @@ agents as a bug sniffer, while keeping the human-friendly terminal UI.
   so the missing-lockfile finding could never fire on broken projects
 - Untracked files inside new directories are now matched correctly in
   changed-file scans (`git status -uall`)
+- `repomedic run` now exits 1 (not 0) when a script cannot be run at all —
+  unsupported extension or missing interpreter — and prints the reason to
+  stderr instead of silently reporting the project as healthy
 
 ## 0.1.0 (2026-03-15)
 

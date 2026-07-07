@@ -146,5 +146,6 @@ CLI flags always override the config file.
 | `1` | Findings at/above the threshold (for `sniff`: errors exist) |
 | `2` | Usage error — bad path, unknown analyzer, invalid flag value |
 
-`repomedic run` exits `1` when the script failed, `0` when it ran cleanly.
-`repomedic doctor` exits `1` when a required tool/dependency is missing.
+`repomedic run` exits `1` when the script failed to run (unsupported
+extension, missing interpreter) or ran with errors, and `0` when it ran
+cleanly. `repomedic doctor` exits `1` when a required tool/dependency is missing.

@@ -346,7 +346,15 @@ def run(
     else:
         typer.echo(print_json(report))
 
-    raise typer.Exit(1 if report.summary.errors else 0)
+    # `result.error` is set (with zero findings) when the script could not be run
+    # at all — an unsupported extension or a missing interpreter. That is still a
+    # failure, so print it to stderr (stdout stays clean for JSON consumers) and
+    # make sure the exit code reflects it, not just error-severity findings.
+    if result.error:
+        err_console.print(f"[red]Could not run script:[/] {result.error}")
+
+    # Exit 1 when the script failed to run OR ran and produced error findings.
+    raise typer.Exit(1 if report.summary.errors or result.error else 0)
 
 
 @app.command("list-analyzers")
