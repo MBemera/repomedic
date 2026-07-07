@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
 
 from repomedic.commands.doctor import _check_tool, run_doctor
-from repomedic.utils.process import ProcessResult
 
 
 def test_check_tool_found():

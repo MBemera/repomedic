@@ -1,8 +1,10 @@
-"""Explain command — describe a project in plain English."""
+"""Explain command — describe a project in plain English (or agent markdown)."""
 
 from __future__ import annotations
 
 import ast
+import logging
+import tomllib
 from pathlib import Path
 
 from rich.console import Console
@@ -10,6 +12,10 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.tree import Tree
 
+from repomedic.core.languages import detect_languages
+from repomedic.utils.fs import discover_files
+
+logger = logging.getLogger("repomedic")
 console = Console()
 
 # Known dependency descriptions
@@ -55,6 +61,20 @@ _DEP_DESCRIPTIONS: dict[str, str] = {
     "jinja2": "HTML templating engine",
     "aiohttp": "async HTTP client/server",
     "websockets": "WebSocket client and server",
+    # JavaScript ecosystem
+    "react": "UI component library",
+    "next": "React web framework (SSR)",
+    "vue": "UI framework",
+    "express": "Node.js web framework",
+    "axios": "HTTP client",
+    "lodash": "utility functions",
+    "jest": "testing framework",
+    "vitest": "testing framework (Vite)",
+    "webpack": "module bundler",
+    "vite": "dev server and bundler",
+    "eslint": "JavaScript linter",
+    "prettier": "code formatter",
+    "typescript": "typed JavaScript compiler",
 }
 
 # Known file/directory descriptions
@@ -64,6 +84,11 @@ _KNOWN_PATHS: dict[str, str] = {
     "setup.cfg": "Legacy package configuration",
     "requirements.txt": "Python dependency list",
     "Pipfile": "Pipenv dependency file",
+    "package.json": "Node.js project config and dependencies",
+    "go.mod": "Go module definition",
+    "Cargo.toml": "Rust crate config and dependencies",
+    "Gemfile": "Ruby dependency file",
+    "composer.json": "PHP dependency file",
     "Dockerfile": "Container build instructions",
     "docker-compose.yml": "Multi-container Docker setup",
     "docker-compose.yaml": "Multi-container Docker setup",
@@ -113,21 +138,38 @@ def _detect_project_type(target: Path) -> str:
         indicators.append("Python package/library")
     if "typer" in all_content.lower() and "Typer(" in all_content:
         indicators.append("CLI tool")
+    if (target / "package.json").exists():
+        indicators.append("Node.js project")
+    if (target / "go.mod").exists():
+        indicators.append("Go module")
+    if (target / "Cargo.toml").exists():
+        indicators.append("Rust crate")
+    if (target / "pom.xml").exists() or (target / "build.gradle").exists() or (target / "build.gradle.kts").exists():
+        indicators.append("Java project")
+    if (target / "Gemfile").exists():
+        indicators.append("Ruby project")
+    if (target / "composer.json").exists():
+        indicators.append("PHP project")
     if (target / "Dockerfile").exists():
         indicators.append("Dockerized")
-    if (target / "package.json").exists():
-        indicators.append("Node.js components")
 
-    return ", ".join(indicators) if indicators else "Python project"
+    if indicators:
+        return ", ".join(indicators)
+
+    # Fall back to the dominant detected language
+    langs = detect_languages(discover_files(target, skip_tests=False))
+    if langs:
+        dominant = next(iter(langs))
+        return f"{dominant.capitalize()} project"
+    return "Python project"
 
 
 def _get_dependencies(target: Path) -> list[tuple[str, str]]:
-    """Extract dependencies and describe them in plain English."""
-    import logging
-    import tomllib
+    """Extract dependencies across ecosystems and describe them in plain English."""
+    import json
+
     from repomedic.analyzers.dependencies import parse_dep_name
 
-    logger = logging.getLogger("repomedic")
     deps: list[str] = []
 
     # From pyproject.toml
@@ -153,6 +195,28 @@ def _get_dependencies(target: Path) -> list[tuple[str, str]]:
                         deps.append(name.lower())
         except OSError as exc:
             logger.warning("Failed to read requirements.txt for explain: %s", exc)
+
+    # From package.json
+    pkg_json = target / "package.json"
+    if pkg_json.is_file():
+        try:
+            data = json.loads(pkg_json.read_text(encoding="utf-8"))
+            for name in data.get("dependencies", {}):
+                if name.lower() not in deps:
+                    deps.append(name.lower())
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.warning("Failed to parse package.json for explain: %s", exc)
+
+    # From Cargo.toml
+    cargo = target / "Cargo.toml"
+    if cargo.is_file():
+        try:
+            data = tomllib.loads(cargo.read_text(encoding="utf-8"))
+            for name in data.get("dependencies", {}):
+                if name.lower() not in deps:
+                    deps.append(name.lower())
+        except (tomllib.TOMLDecodeError, OSError) as exc:
+            logger.warning("Failed to parse Cargo.toml for explain: %s", exc)
 
     result = []
     for dep in deps:
@@ -217,19 +281,31 @@ def _add_children(tree: Tree, directory: Path, root: Path, depth: int, max_depth
             tree.add(label)
 
 
-def run_explain(target: Path) -> dict:
-    """Explain a project in plain English. Returns structured data."""
-    # Project type
-    project_type = _detect_project_type(target)
-    console.print(Panel(
-        f"[bold]Project Type:[/] {project_type}\n"
+def collect_explain(target: Path) -> dict:
+    """Gather project explanation data without printing anything."""
+    files = discover_files(target, skip_tests=False)
+    return {
+        "target": str(target),
+        "project_type": _detect_project_type(target),
+        "languages": detect_languages(files),
+        "dependencies": _get_dependencies(target),
+        "file_count": len(files),
+    }
+
+
+def render_explain(data: dict, target: Path, out: Console | None = None) -> None:
+    """Render collected explain data as rich panels/tables."""
+    out = out or console
+    langs = ", ".join(f"{name} ({count} files)" for name, count in data["languages"].items()) or "none detected"
+    out.print(Panel(
+        f"[bold]Project Type:[/] {data['project_type']}\n"
+        f"[bold]Languages:[/] {langs}\n"
         f"[bold]Location:[/] {target}",
         title="[bold]Project Overview[/]",
         border_style="cyan",
     ))
 
-    # Dependencies
-    deps = _get_dependencies(target)
+    deps = data["dependencies"]
     if deps:
         table = Table(title="Dependencies (what this project uses)", show_header=True, header_style="bold", expand=True)
         table.add_column("Package", min_width=15, style="bold")
@@ -238,15 +314,38 @@ def run_explain(target: Path) -> dict:
         for name, desc in deps:
             table.add_row(name, desc)
 
-        console.print()
-        console.print(table)
+        out.print()
+        out.print(table)
 
-    # File tree
-    console.print()
-    console.print("[bold]Project Structure:[/]")
-    console.print(_build_file_tree(target))
+    out.print()
+    out.print("[bold]Project Structure:[/]")
+    out.print(_build_file_tree(target))
 
-    return {
-        "project_type": project_type,
-        "dependencies": deps,
-    }
+
+def render_explain_markdown(data: dict) -> str:
+    """Render the project brief as markdown — an agent onboarding document."""
+    lines = [
+        f"# Project Brief: `{data['target']}`",
+        "",
+        f"- **Type:** {data['project_type']}",
+        f"- **Files:** {data['file_count']}",
+    ]
+    langs = ", ".join(f"{name} ({count})" for name, count in data["languages"].items())
+    lines.append(f"- **Languages:** {langs or 'none detected'}")
+    lines.append("")
+
+    if data["dependencies"]:
+        lines += ["## Dependencies", "", "| Package | Purpose |", "|---------|---------|"]
+        for name, desc in data["dependencies"]:
+            lines.append(f"| {name} | {desc} |")
+        lines.append("")
+
+    lines.append("*Generated by `repomedic explain`.*")
+    return "\n".join(lines)
+
+
+def run_explain(target: Path) -> dict:
+    """Explain a project in plain English; print the report, return the data."""
+    data = collect_explain(target)
+    render_explain(data, target)
+    return data

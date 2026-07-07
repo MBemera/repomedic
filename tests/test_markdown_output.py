@@ -1,4 +1,4 @@
-"""Tests for the markdown output formatter."""
+"""Tests for the markdown agent-handoff report."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from repomedic.models import (
     ScanReport,
     Severity,
 )
-from repomedic.output.markdown_output import generate_fix_report
+from repomedic.output.markdown_output import generate_fix_report, render_fix_report
 
 
 def _make_report(findings: list[Finding], target: str = "/tmp/test-project") -> ScanReport:
@@ -33,7 +33,70 @@ def test_empty_report(tmp_path):
     assert "Fix Report" in content
 
 
-def test_report_with_errors(tmp_path):
+def test_front_matter_fields(tmp_path):
+    findings = [
+        Finding(
+            category=Category.static_analysis,
+            severity=Severity.error,
+            code="TEST-001",
+            title="Broken thing",
+            description="Something is broken.",
+            file_path="src/app.py",
+            line=42,
+        ),
+    ]
+    report = _make_report(findings)
+    content = render_fix_report(report)
+
+    assert content.startswith("---\n")
+    assert "tool: repomedic" in content
+    assert "schema: 2" in content
+    assert "errors: 1" in content
+    assert "shown: 1" in content
+    assert "target: /tmp/test-project" in content
+
+
+def test_findings_grouped_by_file(tmp_path):
+    findings = [
+        Finding(
+            category=Category.static_analysis,
+            severity=Severity.warning,
+            code="W-001",
+            title="Warning in b",
+            description="warn",
+            file_path="b.py",
+            line=1,
+        ),
+        Finding(
+            category=Category.static_analysis,
+            severity=Severity.error,
+            code="E-001",
+            title="Error in a",
+            description="err",
+            file_path="a.py",
+            line=3,
+        ),
+        Finding(
+            category=Category.git_health,
+            severity=Severity.warning,
+            code="GIT-001",
+            title="Uncommitted changes",
+            description="dirty tree",
+        ),
+    ]
+    report = _make_report(findings)
+    content = render_fix_report(report)
+
+    # Files with errors come before files with only warnings; project-level last
+    a_pos = content.index("### `a.py`")
+    b_pos = content.index("### `b.py`")
+    proj_pos = content.index("### (project-level)")
+    assert a_pos < b_pos < proj_pos
+    assert "— 1 error" in content
+    assert "— 1 warning" in content
+
+
+def test_finding_block_contents(tmp_path):
     findings = [
         Finding(
             category=Category.static_analysis,
@@ -48,59 +111,104 @@ def test_report_with_errors(tmp_path):
         ),
     ]
     report = _make_report(findings)
-    out = tmp_path / "fixes.md"
-    generate_fix_report(report, out)
+    content = render_fix_report(report)
 
-    content = out.read_text()
-    assert "Critical Fixes" in content
-    assert "TEST-001" in content
-    assert "Broken thing" in content
-    assert "src/app.py:42" in content
-    assert "Fix the broken thing" in content
-    assert "[python]" in content
+    finding = findings[0]
+    assert finding.fingerprint in content  # stable ID present
+    assert "`TEST-001` error — Broken thing (line 42)" in content
+    assert "`[python]`" in content
+    assert "**Fix:** Fix the broken thing." in content
 
 
-def test_report_with_mixed_severities(tmp_path):
+def test_snippets_included_and_marked(tmp_path):
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "app.py").write_text("line1 = 1\nline2 = 2\nbroken(\nline4 = 4\nline5 = 5\n")
+
     findings = [
         Finding(
             category=Category.static_analysis,
             severity=Severity.error,
-            code="ERR-001",
-            title="Error finding",
-            description="An error.",
-            suggestion="Fix it.",
+            code="E-001",
+            title="Syntax error",
+            description="bad",
+            file_path="src/app.py",
+            line=3,
         ),
+    ]
+    report = _make_report(findings, target=str(tmp_path))
+    content = render_fix_report(report)
+
+    assert "```python" in content
+    assert "> 3 | broken(" in content
+    assert "  2 | line2 = 2" in content
+
+    # And snippets can be disabled
+    content_no_snippets = render_fix_report(report, include_snippets=False)
+    assert "```python" not in content_no_snippets
+
+
+def test_omitted_findings_note(tmp_path):
+    findings = [
         Finding(
             category=Category.static_analysis,
-            severity=Severity.warning,
-            code="WARN-001",
-            title="Warning finding",
-            description="A warning.",
-            suggestion="Check it.",
-        ),
-        Finding(
-            category=Category.static_analysis,
-            severity=Severity.info,
-            code="INFO-001",
-            title="Info finding",
-            description="A tip.",
-            suggestion="Consider it.",
+            severity=Severity.error,
+            code="E-001",
+            title="Error",
+            description="err",
         ),
     ]
     report = _make_report(findings)
-    out = tmp_path / "fixes.md"
-    generate_fix_report(report, out)
+    report.summary.omitted_findings = 7
+    content = render_fix_report(report)
 
-    content = out.read_text()
-    assert "Critical Fixes" in content
-    assert "Warnings" in content
-    assert "Suggestions" in content
-    assert "ERR-001" in content
-    assert "WARN-001" in content
-    assert "INFO-001" in content
+    assert "7 lower-severity finding(s) omitted" in content
+    assert "--max-findings 0" in content
 
 
-def test_report_summary_table(tmp_path):
+def test_analyzer_failures_section(tmp_path):
+    report = ScanReport(
+        target="/tmp/x",
+        results=[AnalyzerResult(analyzer="broken", error="RuntimeError: boom")],
+    )
+    report.build_summary()
+    content = render_fix_report(report)
+
+    assert "## Analyzer failures" in content
+    assert "**broken**: RuntimeError: boom" in content
+
+
+def test_verify_section_lists_language_commands(tmp_path):
+    findings = [
+        Finding(
+            category=Category.static_analysis,
+            severity=Severity.error,
+            code="E-001",
+            title="Error",
+            description="err",
+        ),
+    ]
+    report = _make_report(findings)
+    report.languages = {"python": 10, "go": 2}
+    content = render_fix_report(report)
+
+    assert "## Verify after fixing" in content
+    assert "repomedic sniff /tmp/test-project --fail-on error" in content
+    assert "ruff check ." in content
+    assert "go vet ./..." in content
+
+
+def test_default_output_path():
+    report = _make_report([], target="/tmp/test-project-out")
+    result = generate_fix_report(report)
+
+    assert result == Path("/tmp/test-project-out/repomedic-fixes.md")
+    assert result.is_file()
+    # Cleanup
+    result.unlink(missing_ok=True)
+
+
+def test_summary_counts(tmp_path):
     findings = [
         Finding(
             category=Category.static_analysis,
@@ -118,67 +226,7 @@ def test_report_summary_table(tmp_path):
         ),
     ]
     report = _make_report(findings)
-    out = tmp_path / "fixes.md"
-    generate_fix_report(report, out)
+    content = render_fix_report(report)
 
-    content = out.read_text()
-    # Summary table should have correct counts
-    assert "| 🔴 Errors | 1 |" in content
-    assert "| 🟡 Warnings | 1 |" in content
-
-
-def test_default_output_path():
-    report = _make_report([], target="/tmp/test-project-out")
-    result = generate_fix_report(report)
-
-    assert result == Path("/tmp/test-project-out/repomedic-fixes.md")
-    assert result.is_file()
-    # Cleanup
-    result.unlink(missing_ok=True)
-
-
-def test_footer_present(tmp_path):
-    report = _make_report([])
-    out = tmp_path / "fixes.md"
-    generate_fix_report(report, out)
-
-    content = out.read_text()
-    assert "Feed this file to your coding agent" in content
-
-
-def test_language_tags_in_report(tmp_path):
-    findings = [
-        Finding(
-            category=Category.static_analysis,
-            severity=Severity.error,
-            code="JS-001",
-            title="JS error",
-            description="Broken JS.",
-            language="javascript",
-        ),
-        Finding(
-            category=Category.static_analysis,
-            severity=Severity.error,
-            code="GO-001",
-            title="Go error",
-            description="Broken Go.",
-            language="go",
-        ),
-        Finding(
-            category=Category.static_analysis,
-            severity=Severity.warning,
-            code="GIT-001",
-            title="Git warning",
-            description="Uncommitted changes.",
-            language=None,
-        ),
-    ]
-    report = _make_report(findings)
-    out = tmp_path / "fixes.md"
-    generate_fix_report(report, out)
-
-    content = out.read_text()
-    assert "[javascript]" in content
-    assert "[go]" in content
-    # Language-agnostic finding should NOT have a tag
-    assert "GIT-001 — Git warning\n" in content  # no language tag
+    assert "| error | 1 |" in content
+    assert "| warning | 1 |" in content

@@ -1,9 +1,10 @@
-"""Config file validator — pyproject.toml, package.json, Dockerfile, .env."""
+"""Config file validator — project configs, universal data-file syntax, project docs."""
 
 from __future__ import annotations
 
 import json
 import re
+import tomllib
 from pathlib import Path
 
 from repomedic.analyzers import register
@@ -11,14 +12,14 @@ from repomedic.analyzers.base import BaseAnalyzer
 from repomedic.core.context import ScanContext
 from repomedic.models import AnalyzerResult, Category, Finding, Severity
 
+# Skip syntax checks on data files bigger than this (lock files, datasets).
+MAX_DATA_FILE_BYTES = 1024 * 1024
+
 
 @register
 class ConfigAnalyzer(BaseAnalyzer):
     name = "config"
-    description = "Validate pyproject.toml, package.json, Dockerfile, .env files"
-
-    def is_applicable(self, ctx: ScanContext) -> bool:
-        return len(ctx.config_files) > 0
+    description = "Config validation, JSON/YAML/TOML syntax, README/LICENSE presence"
 
     def analyze(self, ctx: ScanContext) -> AnalyzerResult:
         findings: list[Finding] = []
@@ -33,12 +34,109 @@ class ConfigAnalyzer(BaseAnalyzer):
             elif cfg.name == ".env":
                 findings.extend(self._check_env(cfg, ctx))
 
+        findings.extend(self._check_data_file_syntax(ctx))
+        findings.extend(self._check_project_docs(ctx))
+
         return AnalyzerResult(analyzer=self.name, findings=findings)
+
+    def _check_data_file_syntax(self, ctx: ScanContext) -> list[Finding]:
+        """Syntax-check every JSON/TOML/YAML file — language-agnostic, zero-config."""
+        findings = []
+        try:
+            import yaml  # type: ignore[import-untyped]
+        except ImportError:
+            yaml = None
+
+        for f in ctx.data_files:
+            try:
+                if f.stat().st_size > MAX_DATA_FILE_BYTES:
+                    continue
+                content = f.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+
+            suffix = f.suffix.lower()
+            error: str | None = None
+            line: int | None = None
+
+            if suffix == ".json":
+                # package.json/pyproject.toml already get richer checks above
+                if f.name == "package.json":
+                    continue
+                try:
+                    json.loads(content)
+                except json.JSONDecodeError as e:
+                    error, line = e.msg, e.lineno
+            elif suffix == ".toml":
+                if f.name == "pyproject.toml":
+                    continue
+                try:
+                    tomllib.loads(content)
+                except tomllib.TOMLDecodeError as e:
+                    error = str(e)
+            elif suffix in (".yaml", ".yml") and yaml is not None:
+                try:
+                    list(yaml.safe_load_all(content))
+                except yaml.YAMLError as e:
+                    error = str(e).split("\n")[0]
+                    mark = getattr(e, "problem_mark", None)
+                    if mark is not None:
+                        line = mark.line + 1
+
+            if error:
+                fmt = suffix.lstrip(".").upper()
+                findings.append(
+                    Finding(
+                        category=Category.config,
+                        severity=Severity.error,
+                        code="CFG-010",
+                        title=f"Invalid {fmt} syntax",
+                        description=f"Failed to parse {f.name}: {error}",
+                        file_path=self._rel(f, ctx),
+                        line=line,
+                        suggestion=f"Fix the {fmt} syntax error so the file parses.",
+                    )
+                )
+        return findings
+
+    def _check_project_docs(self, ctx: ScanContext) -> list[Finding]:
+        """Flag missing README and LICENSE at the project root."""
+        findings = []
+        has_readme = any(
+            (ctx.target / name).is_file()
+            for name in ("README.md", "README.rst", "README.txt", "README", "readme.md")
+        )
+        if not has_readme:
+            findings.append(
+                Finding(
+                    category=Category.config,
+                    severity=Severity.info,
+                    code="CFG-011",
+                    title="No README file",
+                    description="The project has no README at its root.",
+                    suggestion="Add a README.md describing what the project does and how to run it.",
+                )
+            )
+
+        has_license = any(
+            (ctx.target / name).is_file()
+            for name in ("LICENSE", "LICENSE.md", "LICENSE.txt", "COPYING")
+        )
+        if not has_license:
+            findings.append(
+                Finding(
+                    category=Category.config,
+                    severity=Severity.info,
+                    code="CFG-012",
+                    title="No LICENSE file",
+                    description="The project has no LICENSE file at its root.",
+                    suggestion="Add a LICENSE file if this code will be shared or published.",
+                )
+            )
+        return findings
 
     def _check_pyproject(self, path: Path, ctx: ScanContext) -> list[Finding]:
         findings = []
-        import tomllib
-
         try:
             data = tomllib.loads(path.read_text())
         except Exception as e:

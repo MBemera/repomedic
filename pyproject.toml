@@ -4,19 +4,25 @@ build-backend = "hatchling.build"
 
 [project]
 name = "repomedic"
-version = "0.1.0"
-description = "AI-agent repo debugging system — diagnose issues in folders and repos"
+version = "0.2.0"
+description = "Agent-first repo bug sniffer — diagnose issues in folders and repos, hand the fixes to a coding agent"
 requires-python = ">=3.11"
 dependencies = [
     "typer>=0.9",
     "pydantic>=2.0",
     "rich>=13.0",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
     "ruff>=0.4",
+]
+# Optional analysis tools that unlock deeper findings
+tools = [
+    "semgrep>=1.0",
+    "bandit>=1.7",
 ]
 
 [project.scripts]
@@ -30,3 +36,4 @@ testpaths = ["tests"]
 
 [tool.ruff]
 target-version = "py311"
+extend-exclude = ["tests/fixtures"]
