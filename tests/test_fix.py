@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from repomedic.commands.fix import _fix_env_example, _fix_gitignore, _fix_ruff
+from repomedic.commands.fix import _fix_env_example, _fix_gitignore
 
 
 def test_fix_gitignore_creates_when_missing(tmp_path):

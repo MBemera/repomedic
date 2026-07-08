@@ -9,7 +9,8 @@ from repomedic.core.context import ScanContext
 from repomedic.utils.process import ProcessResult
 
 
-def test_semgrep_not_installed(make_project):
+def test_semgrep_not_installed_is_silent(make_project):
+    """A missing optional tool must not pollute every report with findings."""
     project = make_project({"app.py": "print('hi')\n"})
 
     def fake_run(cmd, **kwargs):
@@ -20,7 +21,8 @@ def test_semgrep_not_installed(make_project):
         analyzer = SemgrepAnalyzer()
         result = analyzer.analyze(ctx)
 
-    assert any(f.code == "SEMGREP-001" for f in result.findings)
+    assert result.findings == []
+    assert result.error is None
 
 
 def test_semgrep_applicable(make_project):

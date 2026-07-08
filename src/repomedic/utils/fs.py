@@ -54,9 +54,12 @@ def discover_files(
     extensions: set[str] | None = None,
     ignore_dirs: set[str] | None = None,
     skip_tests: bool = True,
+    extra_ignore_dirs: set[str] | None = None,
 ) -> list[Path]:
     """Walk *root* and return files, skipping ignored directories and optionally test files."""
     ignored = ignore_dirs if ignore_dirs is not None else _get_ignore_dirs(skip_tests)
+    if extra_ignore_dirs:
+        ignored = ignored | extra_ignore_dirs
     results: list[Path] = []
 
     if not root.is_dir():

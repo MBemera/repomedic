@@ -112,7 +112,16 @@ def print_rich(report: ScanReport, console: Console | None = None) -> None:
     ))
 
     if not report.findings:
-        console.print("\n[bold green]✓ No issues found — your project is healthy![/]\n")
+        # "No findings" only means "healthy" if every analyzer actually ran.
+        # If one failed (e.g. `repomedic run` on an unsupported script type),
+        # say so instead of claiming success.
+        if s.analyzers_failed:
+            console.print(
+                f"\n[yellow]⚠ No findings, but {s.analyzers_failed} analyzer(s) "
+                "could not run — results may be incomplete.[/]\n"
+            )
+        else:
+            console.print("\n[bold green]✓ No issues found — your project is healthy![/]\n")
         return
 
     # Group findings

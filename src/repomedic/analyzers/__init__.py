@@ -24,12 +24,14 @@ def get_all_analyzers() -> list[BaseAnalyzer]:
         dependencies,
         git,
         golang,
+        hygiene,
         javascript,
         logs,
         runtime,
         rust,
         security,
         semgrep,
+        shell,
         static,
     )
 

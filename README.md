@@ -1,8 +1,8 @@
 # RepoMedic
 
-**AI-agent repo debugging system — diagnose issues in any folder or repo from the command line.**
+**Agent-first repo bug sniffer — diagnose issues in any folder or repo from the command line, and hand the fixes to a coding agent.**
 
-RepoMedic scans your codebase, identifies problems, and generates structured fix reports that you can hand directly to an AI coding agent. Think of it as a doctor for your repository: it checks vitals, runs diagnostics, explains what it finds, and prescribes fixes.
+RepoMedic scans a codebase with 13 analyzers, scores its health, and emits a structured markdown fix report designed to drop straight into an AI coding agent's context window. Agents run it as a tool; humans get a friendly terminal UI from the same commands.
 
 ![Scan Results](docs/screenshots/scan-results.png)
 
@@ -10,166 +10,202 @@ RepoMedic scans your codebase, identifies problems, and generates structured fix
 
 ## Why
 
-Debugging a broken or messy repo is time-consuming. You bounce between linters, dependency checks, git logs, and config files trying to piece together what's wrong. AI coding agents can help fix things, but they need concise, structured context to be effective.
+Debugging a broken or messy repo burns time — and for AI agents, it burns tokens. An agent that greps and reads files to *find* problems spends most of its context window on discovery. RepoMedic collapses discovery into one command: it runs the linters, dependency checks, git inspection, secret scanning, and config validation in parallel, then hands back a compact, prioritized fix list with code snippets. The agent goes straight to fixing.
 
-RepoMedic bridges that gap. It runs **11 analyzers** across your project in seconds, produces a health score, and outputs a Markdown fix report designed to be copy-pasted straight into an AI agent's context window — no manual triage needed.
+## Built agent-first
 
-## What
+- **Zero prompts.** Every command is non-interactive by default (`--interactive` opt-in for humans).
+- **Clean stdout.** `--output json` prints only JSON; `sniff` prints only the markdown report. Progress goes to stderr.
+- **Meaningful exit codes.** `0` clean, `1` findings at/above `--fail-on`, `2` usage error — scriptable in CI and agent loops.
+- **Token-budget aware.** `--max-findings` caps report size keeping the most severe; `--changed`/`--since REF` scope reports to files you touched.
+- **Stable finding IDs.** Every finding has a `RM-xxxxxxxx` fingerprint that survives re-runs, so agents can track fix progress.
+- **Self-describing.** `repomedic agents` prints the agent integration guide; see also [docs/AGENTS.md](docs/AGENTS.md).
 
-RepoMedic is a Python CLI tool that performs automated diagnostics on local directories and GitHub repos. It covers:
+```bash
+# The agent workflow
+repomedic sniff .                      # markdown fix report on stdout, exit 1 if errors
+# ...agent fixes file by file...
+repomedic sniff . --changed --fail-on error   # re-check only touched files; exit 0 = done
+```
 
-| Analyzer | What It Checks |
-|---|---|
-| **Static Analysis** | Linting issues via Ruff (Python) |
-| **Dependencies** | Missing, outdated, or broken packages |
-| **Git Health** | Merge conflicts, large files, uncommitted changes |
-| **Config** | Missing `.gitignore`, broken `pyproject.toml`, missing configs |
-| **Runtime** | Execute a script and capture tracebacks/errors |
-| **Log Analysis** | Parse log files for errors and patterns |
-| **Security** | Exposed secrets, `.env` files, hardcoded credentials |
-| **Semgrep** | Advanced static analysis patterns (if Semgrep is installed) |
-| **JavaScript** | ESLint issues, missing `node_modules`, lockfile conflicts |
-| **Go** | `go vet`, build errors, module issues |
-| **Rust** | `cargo check`, Clippy warnings, build failures |
+## What it checks
 
-### Commands
+| Analyzer | What It Checks | Languages |
+|---|---|---|
+| **static** | Ruff linting, syntax errors, Bandit, circular imports | Python |
+| **dependencies** | Missing/broken packages, venv health | Python |
+| **javascript** | Syntax, ESLint, TypeScript (`tsc`), `npm audit`, lockfiles | JS / TS |
+| **go** | Build errors, `go vet`, module verification, `govulncheck` | Go |
+| **rust** | `cargo check`, Clippy, `cargo audit`, lockfile | Rust |
+| **shell** | `bash -n` syntax checks, ShellCheck | Shell |
+| **git** | Merge conflicts, uncommitted changes, detached HEAD, .gitignore | any |
+| **config** | pyproject/package.json/Dockerfile/.env validation, JSON/YAML/TOML syntax across the repo, README/LICENSE presence | any |
+| **security** | Hardcoded secrets (Gitleaks + patterns), tracked .env, DEBUG mode | any |
+| **hygiene** | Oversized files, TODO/FIXME buildup, broken symlinks | any |
+| **logs** | Error patterns and tracebacks in log files | any |
+| **semgrep** | Advanced multi-language SAST (if installed) | 30+ |
+| **runtime** | Execute a script and analyze the failure (`repomedic run`) | py, js, sh, rb, php, pl, lua |
+
+Language detection covers 30+ languages (Python, JS/TS, Go, Rust, Java, Kotlin, C/C++, C#, Ruby, PHP, Swift, shell, SQL, Terraform, …) and drives per-language verify commands in the fix report.
+
+## Commands
 
 | Command | What It Does |
 |---|---|
-| `repomedic .` | Scan a directory with interactive analyzer picker |
-| `repomedic doctor` | Check your dev environment (Python, git, pip, dependencies) |
-| `repomedic explain` | Describe a project in plain English |
-| `repomedic fix` | Auto-fix safe, common issues (Ruff, `.gitignore`, etc.) |
-| `repomedic run script.py` | Run a Python script and analyze its output |
+| `repomedic sniff [PATH]` | **The agent command**: scan and print the markdown fix report to stdout; exit 1 on errors |
+| `repomedic [PATH]` | Scan with a rich terminal UI (health score, tables) — shorthand for `repomedic scan` |
+| `repomedic run script.py` | Run a script (any supported language) and analyze the failure |
+| `repomedic doctor` | Check the dev environment: interpreters, toolchains, project dependencies |
+| `repomedic explain` | Describe a project: type, languages, dependencies, structure |
+| `repomedic fix [--dry-run]` | Auto-fix safe issues (ruff, .gitignore, .env.example) |
+| `repomedic list-analyzers` | List available analyzers |
+| `repomedic agents` | Print the agent integration cheat sheet |
 
-### Output Formats
+All commands accept `--output json` (and markdown where it makes sense) for machine consumption.
 
-- **Rich** (default) — Colorful terminal tables with a health score grade (A-F)
-- **Markdown** — Structured fix report for AI agents, with file paths, problem descriptions, and suggested fixes
-- **JSON** — Machine-readable output for CI/CD or tool integration
-
-## How
-
-### Install
+## Install
 
 ```bash
 git clone https://github.com/MBemera/repomedic.git
 cd repomedic
 pip install -e .
+
+# optional: deeper analysis tools
+pip install -e ".[tools]"        # semgrep + bandit
 ```
 
-Requires **Python 3.11+**. Core dependencies: `typer`, `pydantic`, `rich`.
+Requires **Python 3.11+**. Core dependencies: `typer`, `pydantic`, `rich`, `pyyaml`. External tools (ruff, node, go, cargo, shellcheck, gitleaks) are used when present and skipped gracefully when not — `repomedic doctor` shows what's available.
 
-### Quick Start
+## Quick Start
 
 ```bash
-# Scan the current directory (interactive analyzer picker)
-repomedic
+# Agent-ready fix report on stdout
+repomedic sniff .
 
-# Scan with all analyzers, no prompts
-repomedic . --all
+# Human-friendly scan of the current directory
+repomedic
 
 # Scan a GitHub repo directly
 repomedic https://github.com/user/repo
 
-# Pick specific analyzers
-repomedic . --analyzers static,git,security
-
-# Only show warnings and errors
-repomedic . --min-severity warning
-
-# Output as Markdown fix report
-repomedic . --output markdown
-
-# Output as JSON
+# Machine-readable full report
 repomedic . --output json
+
+# Only findings in files you changed since main
+repomedic sniff . --since origin/main
+
+# Restrict analyzers, drop info-level findings, cap the report
+repomedic . -a static,git,security -s warning --max-findings 25
+
+# Gate CI on errors
+repomedic . -o json --fail-on error
 ```
 
-### Screenshots
+## The fix report
 
-#### Scan Results
+`repomedic sniff` (or `--output markdown`) produces a report with YAML front matter (machine-readable counts), findings grouped by file with stable IDs and code snippets, and a verification checklist:
 
-Health score, categorized findings (errors/warnings/tips), and actionable next steps:
+```markdown
+### `src/app.py` — 1 error, 2 warnings
 
+#### RM-105466e2 `STATIC-001` error — Syntax error (line 4) `[python]`
+
+invalid syntax
+
+**Fix:** Fix the syntax error: invalid syntax
+
+​```python
+  2 | import json
+  3 |
+> 4 | def broken(:
+  5 |     pass
+​```
+```
+
+Each finding is self-contained: file, line, problem, suggested fix, and the offending code — an agent can usually fix it without reading the file. Full format documentation: [docs/AGENTS.md](docs/AGENTS.md).
+
+## Per-repo configuration
+
+Pin scan behavior in `.repomedic.toml` at the repo root (or `[tool.repomedic]` in `pyproject.toml`); CLI flags override it:
+
+```toml
+analyzers = ["static", "git", "security", "config"]
+exclude = ["migrations", "vendor"]
+min_severity = "warning"
+max_findings = 50
+fail_on = "error"
+include_tests = false
+```
+
+## Exit codes
+
+| Code | Meaning |
+|---|---|
+| `0` | Nothing at/above the `--fail-on` threshold (scan default: `never`; sniff default: `error`) |
+| `1` | Findings at/above the threshold |
+| `2` | Usage error (bad path, unknown analyzer, invalid flag) |
+
+## Screenshots
+
+#### Scan Results — health score, categorized findings, next steps
 ![Scan Results](docs/screenshots/scan-results.png)
 
-#### Doctor — Environment Health Check
-
-Checks Python, git, pip, virtual environments, and project dependencies:
-
+#### Doctor — environment health check
 ![Doctor](docs/screenshots/doctor.png)
 
-#### Explain — Project Overview
-
-Describes what a project is, what it uses, and how it's organized:
-
+#### Explain — project overview
 ![Explain](docs/screenshots/explain.png)
 
-#### Fix Report — AI Agent Output
-
-Generates a self-contained Markdown report that you feed to your AI coding agent:
-
+#### Fix Report — AI agent output
 ![Fix Report](docs/screenshots/fix-report.png)
-
-### Feed Fixes to an AI Agent
-
-```bash
-# Generate the fix report
-repomedic . --output markdown
-
-# The report is saved to ./repomedic-fixes.md
-# Hand it to your AI coding agent:
-cat repomedic-fixes.md | your-ai-agent
-```
-
-Each fix entry contains the file path, line number, problem description, and suggested solution — so your AI agent can apply fixes without needing to understand the entire codebase.
 
 ## Project Structure
 
 ```
 src/repomedic/
-├── cli.py                # Typer CLI entry point
-├── models.py             # Pydantic models (Finding, ScanReport, etc.)
+├── cli.py                 # Typer CLI (scan/sniff/run/doctor/explain/fix/agents)
+├── models.py              # Pydantic models (Finding, ScanReport, fingerprints)
 ├── core/
-│   ├── scanner.py        # Orchestrator — runs analyzers, builds reports
-│   └── context.py        # ScanContext — language detection, file discovery
+│   ├── scanner.py         # Orchestrator — parallel analyzers, filtering, truncation
+│   ├── context.py         # ScanContext — file discovery, language classification
+│   ├── languages.py       # Language registry (30+ languages, fences, verify commands)
+│   └── config.py          # .repomedic.toml / [tool.repomedic] loader
 ├── analyzers/
-│   ├── base.py           # BaseAnalyzer interface
-│   ├── static.py         # Ruff / linting
-│   ├── dependencies.py   # Dependency health
-│   ├── git.py            # Git repo health
-│   ├── config.py         # Project config files
-│   ├── runtime.py        # Script execution analysis
-│   ├── logs.py           # Log file parsing
-│   ├── security.py       # Secret/credential detection
-│   ├── semgrep.py        # Semgrep integration
-│   ├── javascript.py     # JS/Node analysis
-│   ├── golang.py         # Go analysis
-│   └── rust.py           # Rust/Cargo analysis
+│   ├── base.py            # BaseAnalyzer interface
+│   ├── static.py          # Ruff / Bandit / syntax / circular imports (Python)
+│   ├── dependencies.py    # Python dependency health
+│   ├── javascript.py      # ESLint, tsc, npm audit
+│   ├── golang.py          # go build/vet, govulncheck
+│   ├── rust.py            # cargo check, clippy, cargo audit
+│   ├── shell.py           # bash -n, ShellCheck
+│   ├── git.py             # Repo health
+│   ├── config.py          # Config validation + data-file syntax + project docs
+│   ├── security.py        # Secret/credential detection
+│   ├── hygiene.py         # Large files, TODO buildup, broken symlinks
+│   ├── logs.py            # Log file parsing
+│   ├── semgrep.py         # Semgrep integration
+│   └── runtime.py         # Multi-language script execution analysis
 ├── commands/
-│   ├── doctor.py         # Environment health checks
-│   ├── explain.py        # Project explanation generator
-│   └── fix.py            # Auto-fixer
+│   ├── doctor.py          # Environment checks (collect/render split)
+│   ├── explain.py         # Project explanation (collect/render split)
+│   ├── fix.py             # Auto-fixer (with --dry-run)
+│   └── agents.py          # Agent integration guide
 ├── output/
-│   ├── rich_output.py    # Terminal table output
-│   ├── markdown_output.py# AI-agent fix reports
-│   └── json_output.py    # JSON output
+│   ├── rich_output.py     # Terminal UI
+│   ├── markdown_output.py # Agent handoff report
+│   └── json_output.py     # JSON output
 └── utils/
-    ├── process.py        # Subprocess runner
-    └── fs.py             # File system helpers
+    ├── process.py         # Subprocess runner with timeouts
+    ├── fs.py              # File discovery with ignore rules
+    └── vcs.py             # Git changed-file discovery
 ```
 
 ## Development
 
 ```bash
-# Install dev dependencies
 pip install -e ".[dev]"
-
-# Run tests
-pytest
-
-# Lint
-ruff check src/ tests/
+pytest                      # run tests
+ruff check src/ tests/      # lint
 ```
 
 ## License

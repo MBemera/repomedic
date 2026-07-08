@@ -8,12 +8,12 @@ import tempfile
 from pathlib import Path
 
 from repomedic.analyzers import register
-
-logger = logging.getLogger("repomedic")
 from repomedic.analyzers.base import BaseAnalyzer
 from repomedic.core.context import ScanContext
 from repomedic.models import AnalyzerResult, Category, Finding, Severity
 from repomedic.utils.process import run
+
+logger = logging.getLogger("repomedic")
 
 
 @register
@@ -38,21 +38,10 @@ class SemgrepAnalyzer(BaseAnalyzer):
         )
 
         if result.returncode < 0:
-            # Semgrep not installed
+            # Semgrep not installed — skip quietly; `repomedic doctor` surfaces
+            # optional tools, and a per-scan info finding is just noise for agents.
             Path(report_path).unlink(missing_ok=True)
-            return AnalyzerResult(
-                analyzer=self.name,
-                findings=[
-                    Finding(
-                        category=Category.static_analysis,
-                        severity=Severity.info,
-                        code="SEMGREP-001",
-                        title="Semgrep not installed",
-                        description="Semgrep is a powerful SAST tool that catches complex bugs.",
-                        suggestion="Install semgrep for deeper analysis: pip install semgrep",
-                    )
-                ]
-            )
+            return AnalyzerResult(analyzer=self.name)
 
         try:
             with open(report_path, encoding="utf-8") as f:

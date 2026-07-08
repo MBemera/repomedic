@@ -2,16 +2,22 @@
 
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime, timezone
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
+
+SCHEMA_VERSION = 2
 
 
 class Severity(str, Enum):
     error = "error"
     warning = "warning"
     info = "info"
+
+
+SEVERITY_ORDER: dict[str, int] = {"error": 0, "warning": 1, "info": 2}
 
 
 class Category(str, Enum):
@@ -22,6 +28,7 @@ class Category(str, Enum):
     runtime = "runtime"
     log_analysis = "log_analysis"
     security = "security"
+    hygiene = "hygiene"
 
 
 class Finding(BaseModel):
@@ -41,9 +48,16 @@ class Finding(BaseModel):
     )
     language: str | None = Field(
         default=None,
-        description="Programming language this finding relates to (python, javascript, go, rust, or None for language-agnostic)",
+        description="Programming language this finding relates to (per the language registry), or None for language-agnostic",
     )
     metadata: dict = Field(default_factory=dict)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def fingerprint(self) -> str:
+        """Stable short ID for referencing/deduplicating this finding across runs."""
+        raw = f"{self.code}|{self.file_path or ''}|{self.line or 0}|{self.title}|{self.description[:80]}"
+        return "RM-" + hashlib.sha1(raw.encode("utf-8")).hexdigest()[:8]
 
 
 class AnalyzerResult(BaseModel):
@@ -64,6 +78,10 @@ class ReportSummary(BaseModel):
     infos: int = 0
     analyzers_run: int = 0
     analyzers_failed: int = 0
+    omitted_findings: int = Field(
+        default=0,
+        description="Findings dropped by --max-findings truncation (counts still reflect the full scan)",
+    )
     health_score: int = 100
     health_grade: str = "A"
 
@@ -71,14 +89,19 @@ class ReportSummary(BaseModel):
 class ScanReport(BaseModel):
     """Top-level scan report — the main output of repomedic."""
 
+    schema_version: int = SCHEMA_VERSION
     target: str
     timestamp: str = Field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
+    languages: dict[str, int] = Field(
+        default_factory=dict,
+        description="Detected languages -> file counts",
+    )
+    files_scanned: int = 0
+    duration_seconds: float = 0.0
     summary: ReportSummary = Field(default_factory=ReportSummary)
     results: list[AnalyzerResult] = Field(default_factory=list)
-    doctor_results: dict | None = Field(default=None, exclude=True)
-    explain_results: dict | None = Field(default=None, exclude=True)
 
     @property
     def findings(self) -> list[Finding]:
@@ -86,11 +109,12 @@ class ScanReport(BaseModel):
         return [f for r in self.results for f in r.findings]
 
     def build_summary(self) -> None:
-        """Recompute summary from results."""
+        """Recompute summary from results (preserving any truncation count)."""
         all_findings = self.findings
         errors = sum(1 for f in all_findings if f.severity == Severity.error)
         warnings = sum(1 for f in all_findings if f.severity == Severity.warning)
         infos = sum(1 for f in all_findings if f.severity == Severity.info)
+        omitted = self.summary.omitted_findings
         score, grade = _compute_score(errors, warnings, infos)
         self.summary = ReportSummary(
             total_findings=len(all_findings),
@@ -99,6 +123,7 @@ class ScanReport(BaseModel):
             infos=infos,
             analyzers_run=len(self.results),
             analyzers_failed=sum(1 for r in self.results if r.error),
+            omitted_findings=omitted,
             health_score=score,
             health_grade=grade,
         )
