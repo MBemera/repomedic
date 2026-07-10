@@ -124,6 +124,8 @@ def _execute_scan(
     snippets: bool,
     analyzer_timeout: Optional[float] = None,
     allow_exec: Optional[bool] = None,
+    baseline: Optional[str] = None,
+    no_baseline: bool = False,
 ) -> None:
     """CLI shell around the scan service: flags in, rendered output + exit code out."""
     if output not in {"rich", "json", "markdown", "md", "sarif"}:
@@ -150,6 +152,8 @@ def _execute_scan(
         fail_on=fail_on,
         analyzer_timeout=analyzer_timeout,
         allow_exec=allow_exec,
+        baseline=baseline,
+        use_baseline=not no_baseline,
     )
 
     outcome: ScanOutcome | None = None
@@ -213,6 +217,8 @@ def scan(
     snippets: bool = typer.Option(True, "--snippets/--no-snippets", help="Include code snippets in markdown reports"),
     analyzer_timeout: Optional[float] = typer.Option(None, "--analyzer-timeout", help="Seconds before an analyzer is abandoned (default 120; 0 = no limit)"),
     allow_exec: Optional[bool] = typer.Option(None, "--exec/--no-exec", help="Allow checks that execute repo code (cargo/go build, eslint). Default: on for local paths, off for URLs"),
+    baseline: Optional[str] = typer.Option(None, "--baseline", help="Baseline file of accepted fingerprints (default: auto-detect .repomedic-baseline.json)"),
+    no_baseline: bool = typer.Option(False, "--no-baseline", help="Ignore any baseline file — report all findings"),
 ) -> None:
     """Scan a local folder or GitHub repo for issues (all analyzers, no prompts)."""
     _execute_scan(
@@ -229,6 +235,8 @@ def scan(
         snippets=snippets,
         analyzer_timeout=analyzer_timeout,
         allow_exec=allow_exec,
+        baseline=baseline,
+        no_baseline=no_baseline,
     )
 
 
@@ -246,6 +254,8 @@ def sniff(
     snippets: bool = typer.Option(True, "--snippets/--no-snippets", help="Include code snippets"),
     analyzer_timeout: Optional[float] = typer.Option(None, "--analyzer-timeout", help="Seconds before an analyzer is abandoned (default 120; 0 = no limit)"),
     allow_exec: Optional[bool] = typer.Option(None, "--exec/--no-exec", help="Allow checks that execute repo code (cargo/go build, eslint). Default: on for local paths, off for URLs"),
+    baseline: Optional[str] = typer.Option(None, "--baseline", help="Baseline file of accepted fingerprints (default: auto-detect .repomedic-baseline.json)"),
+    no_baseline: bool = typer.Option(False, "--no-baseline", help="Ignore any baseline file — report all findings"),
 ) -> None:
     """Bug-sniff a repo for agents: markdown fix report on stdout, exit 1 on errors."""
     _execute_scan(
@@ -262,6 +272,8 @@ def sniff(
         snippets=snippets,
         analyzer_timeout=analyzer_timeout,
         allow_exec=allow_exec,
+        baseline=baseline,
+        no_baseline=no_baseline,
     )
 
 
@@ -304,6 +316,45 @@ def run(
 
     # Exit 1 when the script failed to run OR ran and produced error findings.
     raise typer.Exit(1 if report.summary.errors or result.error else 0)
+
+
+@app.command()
+def baseline(
+    target: str = typer.Argument(".", help="Local path to snapshot"),
+    file: Optional[str] = typer.Option(None, "--file", "-f", help="Baseline file path (default: <target>/.repomedic-baseline.json)"),
+    output: str = typer.Option("rich", "--output", "-o", help="Output format: rich or json"),
+) -> None:
+    """Accept all current findings: write their fingerprints to a baseline file.
+
+    Later scans drop baselined findings, so `--fail-on error` only trips on
+    NEW errors. Re-run this command to re-accept after intentional changes.
+    """
+    from repomedic.core.baseline import BASELINE_FILENAME, write_baseline
+
+    path = _resolve_dir(target)
+    request = ScanRequest(
+        target=str(path),
+        max_findings=0,
+        fail_on="never",
+        use_baseline=False,
+    )
+    try:
+        outcome = run_scan(request, progress=lambda msg: err_console.print(f"[cyan]{msg}[/]"))
+    except ScanServiceError as exc:
+        err_console.print(f"[red]Error:[/] {exc}")
+        raise typer.Exit(exc.exit_code) from exc
+
+    baseline_path = Path(file) if file else path / BASELINE_FILENAME
+    baseline_model = write_baseline(outcome.report, baseline_path)
+
+    if output == "json":
+        typer.echo(baseline_model.model_dump_json(indent=2))
+    else:
+        console.print(
+            f"[bold green]✓[/] Baseline written to [cyan]{baseline_path}[/] "
+            f"({len(baseline_model.fingerprints)} accepted fingerprints)"
+        )
+        console.print("  Future scans report only NEW findings; pass --no-baseline to see everything.")
 
 
 @app.command("list-analyzers")

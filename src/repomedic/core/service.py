@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Callable
 
 from repomedic.analyzers import get_all_analyzers
+from repomedic.core.baseline import BASELINE_FILENAME, BaselineError, load_baseline
 from repomedic.core.config import VALID_FAIL_ON, VALID_SEVERITIES, load_config
 from repomedic.core.scanner import Scanner
 from repomedic.models import ScanReport
@@ -59,6 +60,8 @@ class ScanRequest:
     fail_on: str | None = None
     analyzer_timeout: float | None = None  # None = config default; 0 disables
     allow_exec: bool | None = None  # None = policy default: local yes, remote URL no
+    baseline: str | None = None  # explicit baseline file path (must exist)
+    use_baseline: bool = True  # False = ignore even an auto-detected baseline
 
 
 @dataclass
@@ -126,6 +129,34 @@ def _clone_repo(url: str, progress: ProgressFn | None = None) -> Path:
     return clone_dir
 
 
+def _resolve_baseline(
+    req: ScanRequest, resolved: Path, progress: ProgressFn | None
+) -> set[str] | None:
+    """Load the baseline fingerprints per request policy.
+
+    An explicit ``baseline`` path must exist (usage error otherwise); with
+    no explicit path, ``.repomedic-baseline.json`` at the target root is
+    auto-detected. ``use_baseline=False`` disables both.
+    """
+    if not req.use_baseline:
+        return None
+    if req.baseline:
+        baseline_path = Path(req.baseline)
+        if not baseline_path.is_file():
+            raise ScanServiceError(f"baseline file not found: {req.baseline}")
+    else:
+        baseline_path = resolved / BASELINE_FILENAME
+        if not baseline_path.is_file():
+            return None
+    try:
+        fingerprints = load_baseline(baseline_path)
+    except BaselineError as exc:
+        raise ScanServiceError(str(exc)) from exc
+    if progress:
+        progress(f"Baseline: {baseline_path.name} ({len(fingerprints)} accepted fingerprints)")
+    return fingerprints
+
+
 def run_scan(req: ScanRequest, *, progress: ProgressFn | None = None) -> ScanOutcome:
     """Run the full scan pipeline. Never prints, prompts, or exits.
 
@@ -182,6 +213,8 @@ def run_scan(req: ScanRequest, *, progress: ProgressFn | None = None) -> ScanOut
         # a scanned repo must never be able to grant itself execution.
         allow_exec = req.allow_exec if req.allow_exec is not None else not was_remote
 
+        baseline_fingerprints = _resolve_baseline(req, resolved, progress)
+
         report = Scanner().scan(
             str(resolved),
             analyzer_names=analyzer_list,
@@ -191,6 +224,7 @@ def run_scan(req: ScanRequest, *, progress: ProgressFn | None = None) -> ScanOut
             only_files=only_files,
             max_findings=max_findings,
             allow_exec=allow_exec,
+            baseline_fingerprints=baseline_fingerprints,
             **scan_kwargs,
         )
 

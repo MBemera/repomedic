@@ -14,7 +14,7 @@ from pathlib import PurePosixPath
 from repomedic.analyzers import get_all_analyzers
 from repomedic.analyzers.base import BaseAnalyzer
 from repomedic.core.context import ScanContext
-from repomedic.core.fingerprint import assign_fingerprints
+from repomedic.core.postprocess import postprocess_results
 from repomedic.models import SEVERITY_ORDER, AnalyzerResult, Finding, ScanReport
 
 MAX_PARALLEL_ANALYZERS = 4
@@ -37,6 +37,7 @@ class Scanner:
         max_findings: int | None = None,
         analyzer_timeout: float | None = DEFAULT_ANALYZER_TIMEOUT,
         allow_exec: bool = True,
+        baseline_fingerprints: set[str] | None = None,
     ) -> ScanReport:
         """Run applicable analyzers and return a ScanReport.
 
@@ -55,6 +56,8 @@ class Scanner:
             allow_exec: Permit checks that execute repo-controlled code
                 (cargo/go builds, eslint config loading). Disable for
                 untrusted targets; skipped checks are recorded per analyzer.
+            baseline_fingerprints: Fingerprints from a baseline file —
+                matching findings are dropped and counted as suppressed.
         """
         start = time.monotonic()
         ctx = ScanContext(
@@ -87,8 +90,10 @@ class Scanner:
         report.results = results
 
         # Before any filtering/truncation: fingerprints (incl. occurrence
-        # indices) are a property of the repo state, not of scan flags.
-        assign_fingerprints(results, ctx.target)
+        # indices), inline suppressions, and the baseline are properties of
+        # the repo state, not of scan flags.
+        suppressed = postprocess_results(results, ctx.target, baseline_fingerprints)
+        report.summary.suppressed_findings = suppressed
 
         if only_files is not None:
             _filter_to_files(report, only_files)

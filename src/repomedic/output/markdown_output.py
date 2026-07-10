@@ -56,6 +56,7 @@ def render_fix_report(report: ScanReport, include_snippets: bool = True) -> str:
         f"infos: {s.infos}",
         f"shown: {len(report.findings)}",
         f"omitted: {s.omitted_findings}",
+        f"suppressed: {s.suppressed_findings}",
         f"languages: {langs}",
         f"exec: {'allowed' if report.exec_allowed else 'disabled'}",
         "---",

@@ -114,6 +114,10 @@ class ReportSummary(BaseModel):
         default=0,
         description="Findings dropped by --max-findings truncation (counts still reflect the full scan)",
     )
+    suppressed_findings: int = Field(
+        default=0,
+        description="Findings removed by the baseline file or inline `repomedic: ignore` directives",
+    )
     health_score: int = 100
     health_grade: str = "A"
 
@@ -151,6 +155,7 @@ class ScanReport(BaseModel):
         warnings = sum(1 for f in all_findings if f.severity == Severity.warning)
         infos = sum(1 for f in all_findings if f.severity == Severity.info)
         omitted = self.summary.omitted_findings
+        suppressed = self.summary.suppressed_findings
         score, grade = _compute_score(errors, warnings, infos)
         self.summary = ReportSummary(
             total_findings=len(all_findings),
@@ -160,6 +165,7 @@ class ScanReport(BaseModel):
             analyzers_run=len(self.results),
             analyzers_failed=sum(1 for r in self.results if r.error),
             omitted_findings=omitted,
+            suppressed_findings=suppressed,
             health_score=score,
             health_grade=grade,
         )

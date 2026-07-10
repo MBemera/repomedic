@@ -1,8 +1,9 @@
 """Content-aware fingerprint assignment for scan results.
 
-The scanner calls :func:`assign_fingerprints` once per scan, before any
-filtering or truncation, so a fingerprint is a property of the repo's
-state — not of the flags used for a particular run.
+The scanner calls :func:`assign_fingerprints` once per scan (via
+``core.postprocess``), before any filtering or truncation, so a
+fingerprint is a property of the repo's state — not of the flags used
+for a particular run.
 
 For a finding with a resolvable file and line, the hashed content is the
 normalized text of the flagged line; findings that share (code, file,
@@ -13,31 +14,28 @@ to title/description content (same scheme as the model-level default).
 
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from repomedic.models import AnalyzerResult, Finding, compute_fingerprint, normalize_line
-from repomedic.utils.fs import read_text_capped
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from repomedic.core.postprocess import LineCache
 
 
-def assign_fingerprints(results: list[AnalyzerResult], root: Path) -> None:
+def assign_fingerprints(
+    results: list[AnalyzerResult], root: Path, cache: LineCache | None = None
+) -> None:
     """Assign v2 fingerprints to every finding, in place."""
-    root_resolved = root.resolve()
-    line_cache: dict[str, list[str] | None] = {}
+    if cache is None:
+        from repomedic.core.postprocess import LineCache
 
-    def lines_for(file_path: str) -> list[str] | None:
-        if file_path not in line_cache:
-            path = (root / file_path).resolve(strict=False)
-            # Same containment rule as snippets: never read outside the root.
-            if not path.is_relative_to(root_resolved) or not path.is_file():
-                line_cache[file_path] = None
-            else:
-                text = read_text_capped(path)
-                line_cache[file_path] = text.splitlines() if text is not None else None
-        return line_cache[file_path]
+        cache = LineCache(root)
 
     def content_for(finding: Finding) -> str:
         if finding.file_path and finding.line:
-            file_lines = lines_for(finding.file_path)
+            file_lines = cache.lines(finding.file_path)
             if file_lines and 1 <= finding.line <= len(file_lines):
                 return normalize_line(file_lines[finding.line - 1])
         if finding.file_path:
