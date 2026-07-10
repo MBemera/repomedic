@@ -11,6 +11,7 @@ from repomedic.core.context import ScanContext
 from repomedic.models import AnalyzerResult, Category, Finding, Severity
 from repomedic.utils.fs import read_text_capped
 from repomedic.utils.process import JSON_REPORT_PLACEHOLDER, run_json_tool
+from repomedic.utils.redact import mask_secret
 from repomedic.utils.vcs import run_git
 
 # Patterns for hardcoded secrets (name, regex)
@@ -77,7 +78,14 @@ class SecurityAnalyzer(BaseAnalyzer):
                     file_path=self._rel(Path(leak.get("File", "")), ctx),
                     line=leak.get("StartLine"),
                     suggestion="Move this secret to a .env file and load it via environment variables. Never commit secrets to version control.",
-                    metadata={"gitleaks_rule": leak.get("RuleID"), "match": leak.get("Match")},
+                    # Never store the raw match: it would surface verbatim in
+                    # JSON output and markdown snippets. The mask keeps enough
+                    # to locate/correlate the secret without revealing it.
+                    metadata={
+                        "gitleaks_rule": leak.get("RuleID"),
+                        "match_masked": mask_secret(leak.get("Match") or ""),
+                        "contains_secret": True,
+                    },
                 )
             )
 
@@ -124,6 +132,10 @@ class SecurityAnalyzer(BaseAnalyzer):
                                 file_path=rel,
                                 line=line_no,
                                 suggestion="Move this secret to a .env file and load it via environment variables. Never commit secrets to version control.",
+                                metadata={
+                                    "match_masked": mask_secret(matched_value),
+                                    "contains_secret": True,
+                                },
                             )
                         )
                         break  # one finding per line

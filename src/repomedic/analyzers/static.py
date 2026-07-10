@@ -117,6 +117,12 @@ class StaticAnalyzer(BaseAnalyzer):
             if abs_path not in allowed_files:
                 continue
 
+            metadata: dict = {"confidence": issue.get("issue_confidence")}
+            # B105/B106/B107 flag hardcoded passwords — the flagged line
+            # contains the secret, so the snippet renderer must withhold it.
+            if issue.get("test_id") in ("B105", "B106", "B107"):
+                metadata["contains_secret"] = True
+
             findings.append(
                 Finding(
                     category=Category.security,
@@ -127,7 +133,7 @@ class StaticAnalyzer(BaseAnalyzer):
                     file_path=self._rel(Path(abs_path), ctx),
                     line=issue.get("line_number"),
                     suggestion="Review this security warning from Bandit.",
-                    metadata={"confidence": issue.get("issue_confidence")},
+                    metadata=metadata,
                 )
             )
 

@@ -53,7 +53,7 @@ def test_front_matter_fields(tmp_path):
     assert "schema: 2" in content
     assert "errors: 1" in content
     assert "shown: 1" in content
-    assert "target: /tmp/test-project" in content
+    assert 'target: "/tmp/test-project"' in content  # values are JSON-quoted scalars
 
 
 def test_findings_grouped_by_file(tmp_path):

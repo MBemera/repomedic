@@ -45,17 +45,22 @@ class SemgrepAnalyzer(BaseAnalyzer):
 
         for res in data.get("results", []):
             extra = res.get("extra", {})
+            check_id = res.get("check_id", "SEMGREP-002")
+            metadata: dict = {}
+            if any(word in check_id.lower() for word in ("secret", "token", "password", "credential", "api-key", "apikey")):
+                metadata["contains_secret"] = True
             findings.append(
                 Finding(
-                    category=Category.security if "security" in res.get("check_id", "").lower() else Category.static_analysis,
+                    category=Category.security if "security" in check_id.lower() else Category.static_analysis,
                     severity=map_severity("semgrep", extra.get("severity", "WARNING")),
-                    code=res.get("check_id", "SEMGREP-002"),
+                    code=check_id,
                     title="Semgrep finding",
                     description=extra.get("message", "Semgrep detected an issue."),
                     file_path=self._rel(Path(res.get("path", "")), ctx),
                     line=res.get("start", {}).get("line"),
                     column=res.get("start", {}).get("col"),
                     suggestion=extra.get("metadata", {}).get("source", "Review the issue corresponding to the semgrep rule."),
+                    metadata=metadata,
                 )
             )
 

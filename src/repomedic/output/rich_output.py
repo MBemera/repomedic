@@ -3,10 +3,15 @@
 from __future__ import annotations
 
 from rich.console import Console
+from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
 
 from repomedic.models import Finding, ScanReport, Severity
+
+# Finding text (title/suggestion/paths) echoes repo content, so it is always
+# escaped before printing — repo-controlled "[red]..."-style markup must
+# style nothing. Our own labels keep their colors.
 
 # Map technical severity to friendly labels
 _FRIENDLY_LABELS = {
@@ -67,10 +72,10 @@ def _findings_table(findings: list[Finding], section_label: str, style: str) -> 
             loc += f":{f.line}"
         table.add_row(
             str(i),
-            f"[{color}]{f.code}[/{color}]",
-            f.title,
-            loc,
-            f.suggestion[:100] + ("..." if len(f.suggestion) > 100 else ""),
+            f"[{color}]{escape(f.code)}[/{color}]",
+            escape(f.title),
+            escape(loc),
+            escape(f.suggestion[:100] + ("..." if len(f.suggestion) > 100 else "")),
         )
     return table
 
@@ -92,7 +97,7 @@ def _next_steps(findings: list[Finding]) -> Panel:
 
     lines = []
     for i, step in enumerate(steps, 1):
-        lines.append(f"  [bold]{i}.[/] {step}")
+        lines.append(f"  [bold]{i}.[/] {escape(step)}")
 
     return Panel("\n".join(lines), title="📋 Next Steps", border_style="cyan")
 
@@ -105,7 +110,7 @@ def print_rich(report: ScanReport, console: Console | None = None) -> None:
     # Health Score badge
     badge = _score_badge(s.health_score, s.health_grade)
     console.print(Panel(
-        badge + f"\n\n[bold]Target:[/] {report.target}\n"
+        badge + f"\n\n[bold]Target:[/] {escape(report.target)}\n"
         f"[bold]Scanned:[/] {s.analyzers_run} analyzers run, {s.analyzers_failed} failed",
         title="[bold]repomedic[/]",
         border_style="cyan",
