@@ -57,6 +57,7 @@ class ScanRequest:
     since: str | None = None
     max_findings: int | None = None
     fail_on: str | None = None
+    analyzer_timeout: float | None = None  # None = config default; 0 disables
 
 
 @dataclass
@@ -167,6 +168,13 @@ def run_scan(req: ScanRequest, *, progress: ProgressFn | None = None) -> ScanOut
             label = "all applicable analyzers" if analyzer_list is None else ", ".join(analyzer_list)
             progress(f"Scanning {resolved} with {label} ...")
 
+        analyzer_timeout = (
+            req.analyzer_timeout if req.analyzer_timeout is not None else cfg.analyzer_timeout
+        )
+        scan_kwargs: dict = {}
+        if analyzer_timeout is not None:
+            scan_kwargs["analyzer_timeout"] = analyzer_timeout
+
         report = Scanner().scan(
             str(resolved),
             analyzer_names=analyzer_list,
@@ -175,6 +183,7 @@ def run_scan(req: ScanRequest, *, progress: ProgressFn | None = None) -> ScanOut
             skip_tests=not cfg.include_tests,
             only_files=only_files,
             max_findings=max_findings,
+            **scan_kwargs,
         )
 
         if progress and report.languages:

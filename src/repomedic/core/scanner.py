@@ -8,7 +8,7 @@ machine consumers (agents, CI) and makes the scan embeddable as a library.
 from __future__ import annotations
 
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from pathlib import PurePosixPath
 
 from repomedic.analyzers import get_all_analyzers
@@ -17,6 +17,9 @@ from repomedic.core.context import ScanContext
 from repomedic.models import SEVERITY_ORDER, AnalyzerResult, Finding, ScanReport
 
 MAX_PARALLEL_ANALYZERS = 4
+
+# Wall-clock budget per analyzer before the scanner stops waiting for it.
+DEFAULT_ANALYZER_TIMEOUT = 120.0
 
 
 class Scanner:
@@ -31,6 +34,7 @@ class Scanner:
         extra_ignore_dirs: set[str] | None = None,
         only_files: set[str] | None = None,
         max_findings: int | None = None,
+        analyzer_timeout: float | None = DEFAULT_ANALYZER_TIMEOUT,
     ) -> ScanReport:
         """Run applicable analyzers and return a ScanReport.
 
@@ -43,6 +47,9 @@ class Scanner:
             only_files: Repo-relative paths — keep only findings in these files
                 (project-level findings are kept). Used for --changed scans.
             max_findings: Truncate to the N most severe findings (0/None = no cap).
+            analyzer_timeout: Wall-clock seconds an analyzer may run before the
+                scanner abandons it (its result becomes an error entry).
+                None/0 disables the deadline.
         """
         start = time.monotonic()
         ctx = ScanContext(target, skip_tests=skip_tests, extra_ignore_dirs=extra_ignore_dirs)
@@ -53,16 +60,18 @@ class Scanner:
             analyzers = [a for a in analyzers if a.name in names]
 
         report = ScanReport(target=str(ctx.target))
+        # Warm the shared lazy caches on the main thread so worker threads
+        # only ever read them — ScanContext has no locks.
         report.languages = ctx.language_counts
         report.files_scanned = len(ctx.files)
+        ctx.files_by_language  # noqa: B018 — intentional cache warmup
 
         applicable = [a for a in analyzers if a.is_applicable(ctx)]
 
         # Analyzers are subprocess/I/O bound, so a small thread pool speeds up
         # scans considerably. Results keep registration order for determinism.
         if len(applicable) > 1:
-            with ThreadPoolExecutor(max_workers=min(MAX_PARALLEL_ANALYZERS, len(applicable))) as pool:
-                results = list(pool.map(lambda a: _run_analyzer(a, ctx), applicable))
+            results = _run_parallel(applicable, ctx, analyzer_timeout)
         else:
             results = [_run_analyzer(a, ctx) for a in applicable]
         report.results = results
@@ -100,6 +109,57 @@ def _run_analyzer(analyzer: BaseAnalyzer, ctx: ScanContext) -> AnalyzerResult:
         )
     result.elapsed_seconds = round(time.monotonic() - start, 3)
     return result
+
+
+def _run_parallel(
+    applicable: list[BaseAnalyzer],
+    ctx: ScanContext,
+    analyzer_timeout: float | None,
+) -> list[AnalyzerResult]:
+    """Run analyzers in a thread pool with a per-analyzer wall-clock deadline.
+
+    Threads cannot be killed, so a deadline expiry *abandons* the analyzer:
+    its result becomes an error entry and the scan moves on, while the
+    orphaned thread winds down on its own subprocess timeouts (every
+    blocking call inside analyzers is a `utils.process.run` with a timeout).
+    A global cap of ``timeout * len(applicable)`` bounds the whole batch even
+    if every worker hangs.
+    """
+    starts: dict[str, float] = {}
+
+    def timed_run(a: BaseAnalyzer) -> AnalyzerResult:
+        starts[a.name] = time.monotonic()
+        return _run_analyzer(a, ctx)
+
+    executor = ThreadPoolExecutor(max_workers=min(MAX_PARALLEL_ANALYZERS, len(applicable)))
+    pending = {a.name: executor.submit(timed_run, a) for a in applicable}
+    results: dict[str, AnalyzerResult] = {}
+    hard_deadline = (
+        time.monotonic() + analyzer_timeout * len(applicable) if analyzer_timeout else None
+    )
+
+    while pending:
+        wait(pending.values(), timeout=0.2, return_when=FIRST_COMPLETED)
+        now = time.monotonic()
+        for name, future in list(pending.items()):
+            timed_out = analyzer_timeout and (
+                (name in starts and now - starts[name] > analyzer_timeout)
+                or (hard_deadline is not None and now > hard_deadline)
+            )
+            if future.done():
+                results[name] = future.result()
+                del pending[name]
+            elif timed_out:
+                elapsed = round(now - starts.get(name, now), 3)
+                results[name] = AnalyzerResult(
+                    analyzer=name,
+                    error=f"Timed out after {analyzer_timeout:.0f}s (analyzer abandoned)",
+                    elapsed_seconds=elapsed,
+                )
+                del pending[name]
+
+    executor.shutdown(wait=False, cancel_futures=True)
+    return [results[a.name] for a in applicable]
 
 
 def _filter_to_files(report: ScanReport, only_files: set[str]) -> None:

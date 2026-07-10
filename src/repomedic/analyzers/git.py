@@ -33,7 +33,7 @@ class GitAnalyzer(BaseAnalyzer):
         return AnalyzerResult(analyzer=self.name, findings=findings)
 
     def _check_status(self, cwd: str) -> list[Finding]:
-        result = run(["git", "status", "--porcelain"], cwd=cwd)
+        result = run(["git", "status", "--porcelain"], cwd=cwd, timeout=15)
         if not result.ok:
             return []
 
@@ -101,7 +101,7 @@ class GitAnalyzer(BaseAnalyzer):
         return findings
 
     def _check_head(self, cwd: str) -> list[Finding]:
-        result = run(["git", "symbolic-ref", "HEAD"], cwd=cwd)
+        result = run(["git", "symbolic-ref", "HEAD"], cwd=cwd, timeout=10)
         if result.ran and result.returncode != 0:
             return [
                 Finding(

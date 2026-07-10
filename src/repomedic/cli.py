@@ -122,6 +122,7 @@ def _execute_scan(
     max_findings: Optional[int],
     fail_on: Optional[str],
     snippets: bool,
+    analyzer_timeout: Optional[float] = None,
 ) -> None:
     """CLI shell around the scan service: flags in, rendered output + exit code out."""
     if output not in {"rich", "json", "markdown", "md"}:
@@ -146,6 +147,7 @@ def _execute_scan(
         since=since,
         max_findings=max_findings,
         fail_on=fail_on,
+        analyzer_timeout=analyzer_timeout,
     )
 
     outcome: ScanOutcome | None = None
@@ -203,6 +205,7 @@ def scan(
     max_findings: Optional[int] = typer.Option(None, "--max-findings", help="Keep only the N most severe findings (0 = unlimited)"),
     fail_on: Optional[str] = typer.Option(None, "--fail-on", help="Exit 1 when findings at/above: error, warning, any, never (default: never)"),
     snippets: bool = typer.Option(True, "--snippets/--no-snippets", help="Include code snippets in markdown reports"),
+    analyzer_timeout: Optional[float] = typer.Option(None, "--analyzer-timeout", help="Seconds before an analyzer is abandoned (default 120; 0 = no limit)"),
 ) -> None:
     """Scan a local folder or GitHub repo for issues (all analyzers, no prompts)."""
     _execute_scan(
@@ -217,6 +220,7 @@ def scan(
         max_findings=max_findings,
         fail_on=fail_on,
         snippets=snippets,
+        analyzer_timeout=analyzer_timeout,
     )
 
 
@@ -231,6 +235,7 @@ def sniff(
     fail_on: Optional[str] = typer.Option("error", "--fail-on", help="Exit 1 when findings at/above: error, warning, any, never"),
     report_file: Optional[str] = typer.Option(STDOUT_SENTINEL, "--report-file", "-r", help="Markdown report path (default '-' = stdout)"),
     snippets: bool = typer.Option(True, "--snippets/--no-snippets", help="Include code snippets"),
+    analyzer_timeout: Optional[float] = typer.Option(None, "--analyzer-timeout", help="Seconds before an analyzer is abandoned (default 120; 0 = no limit)"),
 ) -> None:
     """Bug-sniff a repo for agents: markdown fix report on stdout, exit 1 on errors."""
     _execute_scan(
@@ -245,6 +250,7 @@ def sniff(
         max_findings=max_findings if max_findings is not None else 50,
         fail_on=fail_on,
         snippets=snippets,
+        analyzer_timeout=analyzer_timeout,
     )
 
 

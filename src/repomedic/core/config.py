@@ -38,6 +38,7 @@ class RepomedicConfig:
     max_findings: int | None = None
     fail_on: str | None = None
     include_tests: bool = False
+    analyzer_timeout: float | None = None
 
 
 def load_config(target: Path) -> RepomedicConfig:
@@ -71,6 +72,10 @@ def load_config(target: Path) -> RepomedicConfig:
     include_tests = data.get("include_tests")
     if isinstance(include_tests, bool):
         cfg.include_tests = include_tests
+
+    analyzer_timeout = data.get("analyzer_timeout")
+    if isinstance(analyzer_timeout, (int, float)) and not isinstance(analyzer_timeout, bool) and analyzer_timeout >= 0:
+        cfg.analyzer_timeout = float(analyzer_timeout)
 
     return cfg
 
