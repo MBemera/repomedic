@@ -1,12 +1,15 @@
 # RepoMedic: Review, Agent Workflows, VS Code Debugger, and V&V Framework
 
-> **Status (2026-07-10): Phase 0 complete (v0.3.0)** — CI bootstrap, ProcessResult
-> redesign, scan_service extraction, per-analyzer timeouts, shared helpers,
-> symlink containment + hardened git, --exec/--no-exec trust model, report
-> sanitization + secret redaction, fingerprint v2 + schema 3, typed command
-> payloads + py.typed. Each numbered item below maps to one commit on this
-> branch. **Next: Phase 1** (SARIF, baseline + suppressions, MCP server,
-> agents-guide single-sourcing, GitHub Action + pre-commit, schema export).
+> **Status (2026-07-10): Phases 0–1 complete (v0.4.0)** — Phase 0: CI bootstrap,
+> ProcessResult redesign, scan_service extraction, per-analyzer timeouts, shared
+> helpers, symlink containment + hardened git, --exec/--no-exec trust model,
+> report sanitization + secret redaction, fingerprint v2 + schema 3, typed
+> command payloads + py.typed. Phase 1: SARIF 2.1.0 output, baseline + inline
+> suppressions (core/postprocess shared pass), MCP server (8 service-backed
+> tools, exec off by default), agents-guide single-sourcing (data/AGENTS.md),
+> composite GitHub Action + pre-commit hook + CI action-selftest, `schema`
+> export command. Each numbered item maps to one commit on this branch.
+> **Next: Phase 2** (headless DAP core, `repomedic debug`, VS Code extension).
 
 ## Context
 

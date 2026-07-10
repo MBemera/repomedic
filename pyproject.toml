@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "repomedic"
-version = "0.3.0"
+version = "0.4.0"
 description = "Agent-first repo bug sniffer — diagnose issues in folders and repos, hand the fixes to a coding agent"
 requires-python = ">=3.11"
 dependencies = [
