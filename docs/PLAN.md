@@ -1,10 +1,11 @@
 # RepoMedic: Review, Agent Workflows, VS Code Debugger, and V&V Framework
 
-> **Status (2026-07-10): Phase 2 in progress (v0.4.0)** — Phases 0–1 are complete.
-> Phases 2.1–2.2 are now implemented: bounded stdlib DAP transport, loopback-only
+> **Status (2026-07-10): Phase 2 complete (v0.5.0)** — Phases 0–2 are complete.
+> Phases 2.1–2.3 are now implemented: bounded stdlib DAP transport, loopback-only
 > `debugpy` crash capture, process-group deadline enforcement, bounded/redacted
 > frames and locals, `RUN-004`, `repomedic debug`, `run --debug`, safely fenced
-> markdown state, and real-adapter tests. Phase 0: CI bootstrap,
+> markdown state, real-adapter tests, and a thin VS Code extension with bounded
+> workspace diagnostics and debugger actions. Phase 0: CI bootstrap,
 > ProcessResult redesign, scan_service extraction, per-analyzer timeouts, shared
 > helpers, symlink containment + hardened git, --exec/--no-exec trust model,
 > report sanitization + secret redaction, fingerprint v2 + schema 3, typed
@@ -13,7 +14,7 @@
 > tools, exec off by default), agents-guide single-sourcing (data/AGENTS.md),
 > composite GitHub Action + pre-commit hook + CI action-selftest, `schema`
 > export command. Each numbered item maps to one commit on this branch.
-> **Next: Phase 2.3** (thin VS Code extension).
+> **Next: Phase 3.1** (ground-truth corpus and scorer).
 
 ## Context
 
@@ -206,7 +207,7 @@ suppression unit test; in-process MCP client round-trip asserts schema 3; `pre-c
 
 ---
 
-## Phase 2 — Debugger integration (PR: headless DAP core + `repomedic debug` + VS Code extension)
+## Phase 2 — Debugger integration (complete in v0.5.0)
 
 This is the part that turns the shallow regex-post-mortem runtime analyzer into a real debugger driver, headless
 (for agents/CI) with a thin VS Code layer on top.
@@ -229,14 +230,15 @@ by plain and debug paths); add `analyze_script(..., debug=False, bounds=None)`. 
 `repomedic debug SCRIPT [ARGS…] --timeout --max-frames --max-vars -o json|rich|markdown`; plus `repomedic run
 --debug`.
 
-**2.3 VS Code extension (thin)** — new `editors/vscode/` (TypeScript, `@types/vscode` only, built with `tsc`; **no
-marketplace publish this round** — F5 dev host + `vsce package` docs). `package.json` contributes commands
+**2.3 VS Code extension (thin)** — new `editors/vscode/` (TypeScript, zero runtime npm dependencies, built with
+`tsc`; **no marketplace publish this round** — F5 dev host + `vsce package` docs). `package.json` contributes commands
 (`scanWorkspace`, `debugCurrentFile`, `clearDiagnostics`) + config (`repomedic.path`, `repomedic.extraArgs` default
 `["--no-exec"]`, `repomedic.maxFindings`). `report.ts` (pure, testable) maps `--output json` findings →
 `DiagnosticCollection` (severity/code/range/source); status-bar shows the health score. `debugCurrentFile` launches
-`vscode.debug.startDebugging({type:"python",request:"launch",…})` for interactive debugging **and** offers a
+`vscode.debug.startDebugging({type:"debugpy",request:"launch",…})` for interactive debugging **and** offers a
 "Capture crash state" action running `repomedic debug` in the integrated terminal. A `CodeActionProvider` surfaces
-those on `repomedic` diagnostics in runnable files.
+those on `repomedic` diagnostics in runnable files. The extension requires Workspace Trust, rejects virtual
+workspaces, validates machine-scoped executable/argument settings, and never invokes RepoMedic through a shell.
 
 **pyproject:** extras += `debug = ["debugpy>=1.8"]`; dev += `debugpy` (CI exercises DAP for real); version → `0.5.0`.
 
@@ -247,7 +249,8 @@ missing-debugpy → graceful fallback), `test_cli_debug.py` (exit 1, JSON has `R
 
 **Verify:** `repomedic debug crash_value_error.py -o json` shows `RUN-004` with frames/locals; `debug hang.py
 --timeout 3` returns promptly; `run … --debug -o markdown` shows a fenced Debug-state block; `cd editors/vscode &&
-npm ci && npm run compile && npm test`; F5 dev host populates Problems panel and launches the debugger.
+npm ci --ignore-scripts && npm test && npm audit --audit-level=high`; F5 dev host populates Problems panel and
+launches the debugger.
 
 ---
 
@@ -255,6 +258,8 @@ npm ci && npm run compile && npm test`; F5 dev host populates Problems panel and
 
 Goal: prove RepoMedic's findings are **true** (precision/recall) and the tool is **safe** (injection/redaction/
 subprocess), continuously.
+
+**Next implementation: 3.1 Ground-truth corpus + scorer.**
 
 **3.1 Ground-truth corpus + scorer** — new top-level `vv/` (excluded from wheel + self-scan). `vv/corpus/<case>/`
 each with a seeded-bug `project/` + `expected.yaml` (`requires:` toolchains, `expect:` [code,file,line-range,
@@ -286,7 +291,8 @@ schema-self-validation, render-integrity (canary payload stays fenced, front mat
 
 **3.5 CI completion** — `ci.yml` grows: `lint`, blocking `typecheck`, `test` matrix (no toolchains → proves graceful
 degradation), **`test-toolchains`** (one leg with node/go/rust/shellcheck/gitleaks/semgrep+bandit — finally
-exercises the subprocess parsers and `requires` corpus cases; also builds+tests the VS Code extension), `coverage`
+exercises the subprocess parsers and `requires` corpus cases; the dedicated Node 22 job already builds, tests, and
+audits the VS Code extension), `coverage`
 (`--cov-fail-under=75`, ratchet later), `corpus` (scorer gate + table artifact), `dogfood` (`repomedic selfcheck`
 + `repomedic scan . --no-exec --fail-on error` with a repo-root `.repomedic.toml` excluding `vv`/fixtures/editors),
 `action-selftest`.

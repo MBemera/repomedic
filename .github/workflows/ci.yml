@@ -40,6 +40,22 @@ jobs:
       - run: pip install -e ".[dev,mcp]"
       - run: pytest -q
 
+  vscode-extension:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: editors/vscode
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: editors/vscode/package-lock.json
+      - run: npm ci --ignore-scripts
+      - run: npm test
+      - run: npm audit --audit-level=high
+
   action-selftest:
     runs-on: ubuntu-latest
     steps:

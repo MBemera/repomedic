@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.5.0 (2026-07-10)
+
+Debugger integration release: RepoMedic can capture Python crash state
+headlessly and surface scans and debugging workflows in VS Code.
 
 ### Added
 - Headless, stdlib-only DAP client with bounded messages, request correlation,
@@ -12,6 +15,20 @@
   rich, and markdown output plus `--timeout`, `--max-frames`, and `--max-vars`.
 - `RUN-004` debugger findings anchored at the deepest user frame. JSON carries
   structured debug metadata; markdown quarantines it in a dynamic fenced block.
+- Development VS Code extension with workspace scans in the Problems panel,
+  health-score status, Python debugging, crash-state capture, diagnostic code
+  actions, and commands to clear diagnostics.
+- Pure TypeScript report mapping and bounded process-argument helpers with Node
+  unit tests, plus a Node.js 22 CI job that compiles, tests, and audits the
+  extension.
+
+### Security
+- The extension requires Workspace Trust, rejects virtual workspaces, and
+  defaults scans to `--no-exec` so repo-controlled tools are not executed
+  without an explicit developer choice.
+- Executable paths and extra arguments are machine-scoped, validated, and
+  passed without a shell. Scan time, output, arguments, and diagnostic counts
+  are bounded before data reaches the editor.
 
 ### Fixed
 - Runtime debug fallback no longer risks executing a clean, failed, or timed-out

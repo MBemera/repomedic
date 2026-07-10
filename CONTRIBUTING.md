@@ -19,7 +19,8 @@ pip install -e ".[dev]"
    git checkout -b feature/my-change
    ```
 
-2. **Make your changes** in `src/repomedic/`.
+2. **Make your changes** in `src/repomedic/`, `tests/`, or
+   `editors/vscode/` as appropriate.
 
 3. **Run tests** before submitting:
    ```bash
@@ -32,6 +33,35 @@ pip install -e ".[dev]"
    ```
 
 5. **Open a pull request** with a clear description of what you changed and why.
+
+## VS Code Extension Development
+
+The extension requires Node.js 22 and a local RepoMedic installation with the
+debug extra:
+
+```bash
+pip install -e ".[debug]"
+cd editors/vscode
+npm ci --ignore-scripts
+code .
+```
+
+Press `F5` to compile the extension and launch an Extension Development Host.
+Before submitting extension changes, run:
+
+```bash
+npm test
+npm audit --audit-level=high
+```
+
+`npm run package` creates a local VSIX for manual testing. Do not publish the
+extension to the Marketplace as part of this phase.
+
+Keep the extension's security boundaries intact: require Workspace Trust,
+reject virtual workspaces, retain `--no-exec` as the default scan argument, use
+argument arrays instead of shell command strings, and bound subprocess output
+and diagnostic counts. Never place secrets in extension settings, logs,
+fixtures, or packaged output.
 
 ## Adding a New Analyzer
 

@@ -111,6 +111,38 @@ repomedic debug path/to/script.py --timeout 60 -o json
 repomedic run path/to/script.py --debug -o markdown
 ```
 
+## VS Code Extension
+
+The development extension in `editors/vscode/` adds workspace scans to the
+Problems panel, shows the RepoMedic health score in the status bar, and exposes
+interactive debugging and bounded crash-state capture from Python diagnostics.
+It is not published to the VS Code Marketplace yet.
+
+Install RepoMedic with debugger support, install the extension's pinned Node
+dependencies, then open the extension folder in VS Code:
+
+```bash
+pip install -e ".[debug]"
+cd editors/vscode
+npm ci --ignore-scripts
+code .
+```
+
+Press `F5` to compile the TypeScript and open an Extension Development Host.
+From that window, run **RepoMedic: Scan Workspace**, **RepoMedic: Debug Current
+File**, or **RepoMedic: Clear Diagnostics** from the Command Palette. Use
+`npm test` for the extension unit tests and `npm run package` to build a local
+VSIX; Marketplace publishing is intentionally out of scope for this release.
+
+The extension requires a trusted, filesystem-backed workspace and rejects
+virtual workspaces. Scans default to `repomedic.extraArgs = ["--no-exec"]`; enabling
+repo-controlled tool execution should be a deliberate choice for code you
+trust. `repomedic.path` and `repomedic.extraArgs` are machine-scoped settings,
+and RepoMedic is invoked with argument arrays rather than a shell. Scan output,
+argument sizes, time, and diagnostic counts are bounded. See
+[the extension guide](editors/vscode/README.md) for configuration and security
+details.
+
 ## The fix report
 
 `repomedic sniff` (or `--output markdown`) produces a report with YAML front matter (machine-readable counts), findings grouped by file with stable IDs and code snippets, and a verification checklist:
@@ -211,6 +243,12 @@ src/repomedic/
     ├── process.py         # Subprocess runner with timeouts
     ├── fs.py              # File discovery with ignore rules
     └── vcs.py             # Git changed-file discovery
+
+editors/vscode/
+├── src/extension.ts       # VS Code commands, diagnostics, debugging, code actions
+├── src/files.ts           # Canonical workspace and symlink containment
+├── src/report.ts          # Pure report-to-diagnostic mapping
+└── src/runner.ts          # Bounded, shell-free RepoMedic process execution
 ```
 
 ## Development
@@ -219,6 +257,11 @@ src/repomedic/
 pip install -e ".[dev]"
 pytest                      # run tests
 ruff check src/ tests/      # lint
+
+cd editors/vscode
+npm ci --ignore-scripts
+npm test                    # compile and test the VS Code extension
+npm audit --audit-level=high
 ```
 
 ## License

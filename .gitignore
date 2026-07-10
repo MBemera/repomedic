@@ -17,10 +17,15 @@ env/
 
 # IDE
 .idea/
-.vscode/
+/.vscode/
 *.swp
 *.swo
 *~
+
+# JavaScript / TypeScript
+node_modules/
+editors/vscode/out/
+editors/vscode/*.vsix
 
 # OS
 .DS_Store
