@@ -435,6 +435,33 @@ def doctor(
 
 
 @app.command()
+def schema(
+    kind: str = typer.Option("report", "--kind", "-k", help="Payload kind: report, baseline, doctor, explain, fix, analyzers"),
+) -> None:
+    """Print the JSON Schema for a repomedic output payload (for validators/contract tests)."""
+    import json
+
+    from pydantic import BaseModel
+
+    from repomedic.core.baseline import BaselineFile
+    from repomedic.models_commands import AnalyzerList, DoctorReport, ExplainReport, FixReport
+
+    models: dict[str, type[BaseModel]] = {
+        "report": ScanReport,
+        "baseline": BaselineFile,
+        "doctor": DoctorReport,
+        "explain": ExplainReport,
+        "fix": FixReport,
+        "analyzers": AnalyzerList,
+    }
+    model = models.get(kind)
+    if model is None:
+        err_console.print(f"[red]Error:[/] invalid --kind '{kind}' (choose from: {', '.join(models)})")
+        raise typer.Exit(2)
+    typer.echo(json.dumps(model.model_json_schema(), indent=2))
+
+
+@app.command()
 def mcp() -> None:
     """Run the MCP server on stdio — exposes RepoMedic tools to agent harnesses."""
     from repomedic.mcp_server import serve
