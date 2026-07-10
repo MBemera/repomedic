@@ -1,0 +1,14 @@
+# Pre-commit hook definition — consume from another repo with:
+#
+#   repos:
+#     - repo: https://github.com/MBemera/repomedic
+#       rev: v0.4.0
+#       hooks:
+#         - id: repomedic
+- id: repomedic
+  name: repomedic (sniff changed files)
+  description: Scan git-changed files for errors before committing
+  entry: repomedic sniff --changed --fail-on error --no-snippets
+  language: python
+  pass_filenames: false
+  always_run: true

@@ -37,5 +37,30 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - run: pip install -e ".[dev]"
+      - run: pip install -e ".[dev,mcp]"
       - run: pytest -q
+
+  action-selftest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run the bundled action against a known-broken fixture
+        id: scan
+        uses: ./
+        continue-on-error: true
+        with:
+          path: tests/fixtures/broken_imports
+          upload-sarif: "false"
+      - name: Assert exit 1 and valid SARIF
+        run: |
+          test "${{ steps.scan.outputs.exit-code }}" = "1"
+          python - <<'EOF'
+          import json
+          with open("repomedic.sarif") as f:
+              sarif = json.load(f)
+          assert sarif["version"] == "2.1.0", sarif.get("version")
+          run = sarif["runs"][0]
+          assert run["tool"]["driver"]["name"] == "RepoMedic"
+          assert run["results"], "expected findings for the broken fixture"
+          print(f"SARIF OK: {len(run['results'])} results")
+          EOF
