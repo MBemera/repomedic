@@ -36,8 +36,3 @@ def get_all_analyzers() -> list[BaseAnalyzer]:
     )
 
     return [cls() for cls in _ANALYZER_CLASSES]
-
-
-def get_analyzer_names() -> list[str]:
-    """Return names of all registered analyzers."""
-    return [a.name for a in get_all_analyzers()]

@@ -196,10 +196,3 @@ def render_doctor(data: dict, out: Console | None = None) -> None:
     else:
         out.print()
         out.print("[bold green]Everything looks good![/]")
-
-
-def run_doctor(target: Path) -> dict:
-    """Check development environment health, print the report, return the data."""
-    data = collect_doctor(target)
-    render_doctor(data)
-    return data

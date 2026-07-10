@@ -10,9 +10,6 @@ Agent-first design rules:
 from __future__ import annotations
 
 import json as json_lib
-import re
-import shutil
-import tempfile
 from pathlib import Path
 from typing import Optional  # noqa: UP035
 
@@ -22,14 +19,16 @@ from rich.panel import Panel
 from typer.core import TyperGroup
 
 from repomedic.analyzers import get_all_analyzers
-from repomedic.core.config import VALID_FAIL_ON, VALID_SEVERITIES, load_config
-from repomedic.core.scanner import Scanner
+from repomedic.core.service import (
+    ScanOutcome,
+    ScanRequest,
+    ScanServiceError,
+    run_scan,
+)
 from repomedic.models import ScanReport
 from repomedic.output.json_output import print_json
 from repomedic.output.markdown_output import generate_fix_report, render_fix_report
 from repomedic.output.rich_output import print_rich
-from repomedic.utils.process import run as run_proc
-from repomedic.utils.vcs import changed_files
 
 
 class DefaultScanGroup(TyperGroup):
@@ -66,35 +65,7 @@ app = typer.Typer(
 console = Console()
 err_console = Console(stderr=True)
 
-GITHUB_RE = re.compile(
-    r"^(https?://github\.com/[\w\-\.]+/[\w\-\.]+(?:\.git)?|git@github\.com:[\w\-\.]+/[\w\-\.]+(?:\.git)?)$"
-)
-
 STDOUT_SENTINEL = "-"
-
-
-def _clone_repo(url: str) -> Path:
-    """Clone a GitHub repo into a temp directory and return the path."""
-    clone_dir = Path(tempfile.mkdtemp(prefix="repomedic_"))
-    err_console.print(f"[cyan]Cloning[/] {url} ...")
-    result = run_proc(["git", "clone", "--depth", "1", url, str(clone_dir)], timeout=120)
-    if not result.ok:
-        err_console.print(f"[red]Clone failed:[/] {result.stderr.strip()}")
-        raise typer.Exit(2)
-    err_console.print(f"[green]Cloned to[/] {clone_dir}")
-    return clone_dir
-
-
-def _resolve_target(target: str) -> tuple[Path, bool]:
-    """Resolve target to a directory path. Returns (path, is_temp)."""
-    if GITHUB_RE.match(target):
-        return _clone_repo(target), True
-
-    path = Path(target).resolve()
-    if not path.is_dir():
-        err_console.print(f"[red]Error:[/] {target} is not a directory or valid GitHub URL")
-        raise typer.Exit(2)
-    return path, False
 
 
 def _resolve_dir(target: str) -> Path:
@@ -138,24 +109,6 @@ def _pick_analyzers() -> list[str] | None:
     return selected
 
 
-def _validate_choice(value: str | None, valid: set[str], flag: str) -> None:
-    if value is not None and value not in valid:
-        err_console.print(f"[red]Error:[/] invalid {flag} '{value}' (choose from: {', '.join(sorted(valid))})")
-        raise typer.Exit(2)
-
-
-def _exit_code_for(report: ScanReport, fail_on: str) -> int:
-    """Map summary counts to an exit code according to the fail-on policy."""
-    s = report.summary
-    if fail_on == "error":
-        return 1 if s.errors else 0
-    if fail_on == "warning":
-        return 1 if s.errors or s.warnings else 0
-    if fail_on == "any":
-        return 1 if s.total_findings else 0
-    return 0  # never
-
-
 def _execute_scan(
     target: str,
     *,
@@ -170,94 +123,70 @@ def _execute_scan(
     fail_on: Optional[str],
     snippets: bool,
 ) -> None:
-    """Shared scan pipeline behind the default command and `sniff`."""
-    _validate_choice(min_severity, VALID_SEVERITIES, "--min-severity")
-    _validate_choice(fail_on, VALID_FAIL_ON, "--fail-on")
+    """CLI shell around the scan service: flags in, rendered output + exit code out."""
     if output not in {"rich", "json", "markdown", "md"}:
         err_console.print(f"[red]Error:[/] invalid --output '{output}' (choose from: rich, json, markdown)")
         raise typer.Exit(2)
 
-    resolved, is_temp = _resolve_target(target)
+    # The interactive analyzer picker is a human affordance, so it lives in
+    # the CLI layer — the service itself never prompts.
+    analyzer_list: list[str] | None = None
+    if analyzers:
+        analyzer_list = [a.strip() for a in analyzers.split(",")]
+    elif interactive:
+        analyzer_list = _pick_analyzers()
+
     progress = console if output == "rich" else err_console
 
+    request = ScanRequest(
+        target=target,
+        analyzers=analyzer_list,
+        min_severity=min_severity,
+        changed=changed,
+        since=since,
+        max_findings=max_findings,
+        fail_on=fail_on,
+    )
+
+    outcome: ScanOutcome | None = None
     try:
-        # Per-repo config supplies defaults; CLI flags win.
-        cfg = load_config(resolved)
-        min_severity = min_severity or cfg.min_severity
-        max_findings = max_findings if max_findings is not None else cfg.max_findings
-        fail_on = fail_on or cfg.fail_on or "never"
-
-        # Which analyzers to run
-        analyzer_list: list[str] | None
-        if analyzers:
-            analyzer_list = [a.strip() for a in analyzers.split(",")]
-            known = {a.name for a in get_all_analyzers()}
-            unknown = [a for a in analyzer_list if a.lower() not in known]
-            if unknown:
-                err_console.print(
-                    f"[red]Error:[/] unknown analyzer(s): {', '.join(unknown)}. "
-                    f"Run `repomedic list-analyzers`."
-                )
-                raise typer.Exit(2)
-        elif interactive:
-            analyzer_list = _pick_analyzers()
-        else:
-            analyzer_list = cfg.analyzers
-
-        # Changed-files scoping
-        only_files: set[str] | None = None
-        if changed or since:
-            only_files = changed_files(resolved, since=since)
-            if only_files is None:
-                err_console.print("[red]Error:[/] --changed/--since requires a git repository")
-                raise typer.Exit(2)
-
-        label = "all applicable analyzers" if analyzer_list is None else ", ".join(analyzer_list)
-        progress.print(f"[cyan]Scanning[/] {resolved} with [bold]{label}[/] ...")
-
-        report = Scanner().scan(
-            str(resolved),
-            analyzer_names=analyzer_list,
-            min_severity=min_severity,
-            extra_ignore_dirs=set(cfg.exclude) or None,
-            skip_tests=not cfg.include_tests,
-            only_files=only_files,
-            max_findings=max_findings,
-        )
-
-        if report.languages:
-            lang_str = ", ".join(f"{name} ({count})" for name, count in report.languages.items())
-            progress.print(f"[bold]Languages:[/] {lang_str}")
-
-        # Emit
-        if output == "json":
-            typer.echo(print_json(report))
-        elif output in ("markdown", "md"):
-            if report_file == STDOUT_SENTINEL:
-                typer.echo(render_fix_report(report, include_snippets=snippets))
-            else:
-                if report_file:
-                    report_path = Path(report_file)
-                elif is_temp:
-                    report_path = Path.cwd() / "repomedic-fixes.md"
-                else:
-                    report_path = None
-                result_path = generate_fix_report(report, report_path, include_snippets=snippets)
-                err_console.print(f"[bold green]✓[/] Fix report written to [cyan]{result_path}[/]")
-                err_console.print("  Feed this file to your coding agent for minimal-context fixes.")
-        else:
-            print_rich(report, console)
-            if report.findings:
-                console.print()
-                console.print(
-                    "[dim]Tip: `repomedic sniff .` prints an agent-ready fix report; "
-                    "`--output markdown` writes it to a file.[/dim]"
-                )
-
-        raise typer.Exit(_exit_code_for(report, fail_on))
+        outcome = run_scan(request, progress=lambda msg: progress.print(f"[cyan]{msg}[/]"))
+        _render_scan(outcome, output=output, report_file=report_file, snippets=snippets)
+        raise typer.Exit(outcome.exit_code)
+    except ScanServiceError as exc:
+        err_console.print(f"[red]Error:[/] {exc}")
+        raise typer.Exit(exc.exit_code) from exc
     finally:
-        if is_temp:
-            shutil.rmtree(resolved, ignore_errors=True)
+        if outcome is not None:
+            outcome.cleanup()
+
+
+def _render_scan(outcome: ScanOutcome, *, output: str, report_file: Optional[str], snippets: bool) -> None:
+    """Route a finished scan to the chosen output format."""
+    report = outcome.report
+    if output == "json":
+        typer.echo(print_json(report))
+    elif output in ("markdown", "md"):
+        if report_file == STDOUT_SENTINEL:
+            typer.echo(render_fix_report(report, include_snippets=snippets))
+        else:
+            if report_file:
+                report_path = Path(report_file)
+            elif outcome.was_remote:
+                report_path = Path.cwd() / "repomedic-fixes.md"
+            else:
+                report_path = None
+            result_path = generate_fix_report(report, report_path, include_snippets=snippets)
+            err_console.print(f"[bold green]✓[/] Fix report written to [cyan]{result_path}[/]")
+            err_console.print("  Feed this file to your coding agent for minimal-context fixes.")
+    else:
+        print_rich(report, console)
+        if report.findings:
+            console.print()
+            console.print(
+                "[dim]Tip: `repomedic sniff .` prints an agent-ready fix report; "
+                "`--output markdown` writes it to a file.[/dim]"
+            )
 
 
 @app.command()

@@ -81,13 +81,6 @@ def render_fixes(fixes: list[tuple[str, str, str]], dry_run: bool = False, out: 
     out.print(table)
 
 
-def run_fix(target: Path, dry_run: bool = False) -> list[tuple[str, str, str]]:
-    """Run all auto-fixes on the target directory, print a summary, return rows."""
-    fixes = collect_fixes(target, dry_run)
-    render_fixes(fixes, dry_run)
-    return fixes
-
-
 def _fix_ruff(target: Path, dry_run: bool = False) -> tuple[str, str, str]:
     """Run ruff check --fix (or --diff in dry-run mode)."""
     if dry_run:
