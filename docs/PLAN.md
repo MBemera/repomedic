@@ -1,6 +1,9 @@
 # RepoMedic: Review, Agent Workflows, VS Code Debugger, and V&V Framework
 
-> **Status (2026-07-10): Phases 0–1 complete (v0.4.0)** — Phase 0: CI bootstrap,
+> **Status (2026-07-10): Phase 2 in progress (v0.4.0)** — Phases 0–1 are complete.
+> Phase 2.1 is now implemented: bounded stdlib DAP transport, loopback-only
+> `debugpy` crash capture, process-group deadline enforcement, bounded/redacted
+> frames and locals, and real-adapter tests. Phase 0: CI bootstrap,
 > ProcessResult redesign, scan_service extraction, per-analyzer timeouts, shared
 > helpers, symlink containment + hardened git, --exec/--no-exec trust model,
 > report sanitization + secret redaction, fingerprint v2 + schema 3, typed
@@ -9,7 +12,7 @@
 > tools, exec off by default), agents-guide single-sourcing (data/AGENTS.md),
 > composite GitHub Action + pre-commit hook + CI action-selftest, `schema`
 > export command. Each numbered item maps to one commit on this branch.
-> **Next: Phase 2** (headless DAP core, `repomedic debug`, VS Code extension).
+> **Next: Phase 2.2** (runtime analyzer refactor and `repomedic debug` CLI).
 
 ## Context
 

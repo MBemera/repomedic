@@ -109,7 +109,7 @@ def _read_capped(stream: IO[bytes], limit: int, chunks: list[bytes], state: dict
     stream.close()
 
 
-def _kill_process_tree(proc: subprocess.Popen[bytes]) -> None:
+def kill_process_tree(proc: subprocess.Popen[bytes]) -> None:
     """Kill the child and (on POSIX) its whole process group."""
     if sys.platform != "win32":
         try:
@@ -177,7 +177,7 @@ def run(
         proc.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
         logger.warning("Command timed out after %ds: %s", timeout, " ".join(cmd))
-        _kill_process_tree(proc)
+        kill_process_tree(proc)
         proc.wait()
         for t in readers:
             t.join(timeout=5)

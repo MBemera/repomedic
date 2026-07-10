@@ -19,6 +19,7 @@ dev = [
     "pytest>=7.0",
     "ruff>=0.4",
     "mypy>=1.10",
+    "debugpy>=1.8.21,<2",
 ]
 # Optional analysis tools that unlock deeper findings
 tools = [
@@ -28,6 +29,10 @@ tools = [
 # MCP server for agent harnesses (`repomedic mcp`)
 mcp = [
     "mcp>=1.2",
+]
+# Headless Python debugger capture (`repomedic debug` in Phase 2)
+debug = [
+    "debugpy>=1.8.21,<2",
 ]
 
 [project.scripts]

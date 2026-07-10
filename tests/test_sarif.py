@@ -128,7 +128,7 @@ def test_cli_scan_output_sarif(make_project):
     from repomedic.cli import app
 
     project = make_project({"app.py": "import os\nprint(os.name)\n"})
-    runner = CliRunner()
+    runner = CliRunner(mix_stderr=False)
     result = runner.invoke(app, ["scan", str(project), "--output", "sarif"])
 
     assert result.exit_code in (0, 1)

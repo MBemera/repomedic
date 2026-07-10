@@ -140,7 +140,7 @@ def test_cli_baseline_command_writes_file(make_project):
     from repomedic.cli import app
 
     project = make_project({"app.py": "import os\nprint(os.name)\n"})
-    runner = CliRunner()
+    runner = CliRunner(mix_stderr=False)
     result = runner.invoke(app, ["baseline", str(project)])
 
     assert result.exit_code == 0

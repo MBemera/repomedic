@@ -9,7 +9,7 @@ from typer.testing import CliRunner
 
 from repomedic.cli import app
 
-runner = CliRunner()
+runner = CliRunner(mix_stderr=False)
 
 
 @pytest.mark.parametrize(
