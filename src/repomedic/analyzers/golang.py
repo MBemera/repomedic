@@ -22,20 +22,27 @@ class GoAnalyzer(BaseAnalyzer):
 
     def analyze(self, ctx: ScanContext) -> AnalyzerResult:
         findings: list[Finding] = []
+        skipped: list[str] = []
 
-        # 1. Build check
-        findings.extend(self._check_build(ctx))
+        # go build/vet compile packages, and cgo pragmas can inject compiler
+        # flags — code execution by scan. govulncheck builds the code too.
+        if ctx.allow_exec:
+            # 1. Build check
+            findings.extend(self._check_build(ctx))
 
-        # 2. Go vet
-        findings.extend(self._run_vet(ctx))
+            # 2. Go vet
+            findings.extend(self._run_vet(ctx))
+        else:
+            skipped += ["go-build", "go-vet", "govulncheck"]
 
-        # 3. Module verification
+        # 3. Module verification (checksum verification, no build)
         findings.extend(self._check_modules(ctx))
 
         # 4. Vulnerability check
-        findings.extend(self._run_govulncheck(ctx))
+        if ctx.allow_exec:
+            findings.extend(self._run_govulncheck(ctx))
 
-        return AnalyzerResult(analyzer=self.name, findings=findings)
+        return AnalyzerResult(analyzer=self.name, findings=findings, skipped_checks=skipped)
 
     def _check_build(self, ctx: ScanContext) -> list[Finding]:
         """Run go build to detect compile errors."""

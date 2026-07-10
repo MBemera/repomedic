@@ -58,6 +58,7 @@ class ScanRequest:
     max_findings: int | None = None
     fail_on: str | None = None
     analyzer_timeout: float | None = None  # None = config default; 0 disables
+    allow_exec: bool | None = None  # None = policy default: local yes, remote URL no
 
 
 @dataclass
@@ -175,6 +176,12 @@ def run_scan(req: ScanRequest, *, progress: ProgressFn | None = None) -> ScanOut
         if analyzer_timeout is not None:
             scan_kwargs["analyzer_timeout"] = analyzer_timeout
 
+        # Trust policy: local targets run the full toolchain; freshly cloned
+        # URLs are untrusted, so code-executing checks are off unless the
+        # caller explicitly opts in. Deliberately NOT a .repomedic.toml key —
+        # a scanned repo must never be able to grant itself execution.
+        allow_exec = req.allow_exec if req.allow_exec is not None else not was_remote
+
         report = Scanner().scan(
             str(resolved),
             analyzer_names=analyzer_list,
@@ -183,6 +190,7 @@ def run_scan(req: ScanRequest, *, progress: ProgressFn | None = None) -> ScanOut
             skip_tests=not cfg.include_tests,
             only_files=only_files,
             max_findings=max_findings,
+            allow_exec=allow_exec,
             **scan_kwargs,
         )
 

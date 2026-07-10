@@ -22,6 +22,12 @@ stderr). Exit code 0 = no errors, 1 = errors found. Findings are grouped by
 file, each with a stable ID (RM-xxxxxxxx), severity, location, a suggested
 fix, and a code snippet of the offending lines.
 
+Trust model: local scans default to --exec (project toolchains like cargo
+check / go build / npx eslint run, and those can execute repo-defined build
+code). URL targets default to --no-exec: no repo-controlled code executes,
+and skipped checks are listed under "Analyzer notes" plus `exec:` in the
+front matter. Pass --no-exec for any repo you don't trust.
+
 ## Other commands
 
     repomedic <path> --output json      # full scan, JSON only on stdout
@@ -41,6 +47,8 @@ fix, and a code snippet of the offending lines.
     --fail-on error|warning|any|never # what makes the exit code 1
     --report-file PATH                # write the markdown report to a file ('-' = stdout)
     --no-snippets                     # omit code snippets to shrink output
+    --no-exec                         # skip checks that execute repo code (default for URLs)
+    --analyzer-timeout N              # abandon an analyzer after N seconds (default 120)
 
 ## Exit codes
 

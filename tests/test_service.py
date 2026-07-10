@@ -77,3 +77,39 @@ def test_exit_code_policy():
     assert exit_code_for(report, "warning") == 1
     assert exit_code_for(report, "any") == 1
     assert exit_code_for(report, "never") == 0
+
+
+def test_allow_exec_defaults_on_for_local(make_project):
+    project = make_project({"app.py": "x = 1\n"})
+    outcome = run_scan(ScanRequest(target=str(project)))
+    assert outcome.report.exec_allowed is True
+
+
+def test_no_exec_skips_code_executing_checks(make_project):
+    project = make_project({
+        "app.js": "console.log('hi')\n",
+        "package.json": '{"name": "t", "version": "1.0.0"}\n',
+    })
+    outcome = run_scan(
+        ScanRequest(target=str(project), analyzers=["javascript"], allow_exec=False)
+    )
+    assert outcome.report.exec_allowed is False
+    js = next(r for r in outcome.report.results if r.analyzer == "javascript")
+    assert "eslint" in js.skipped_checks
+    assert "npm-audit" in js.skipped_checks
+
+
+def test_no_exec_report_renders_notes(make_project):
+    from repomedic.output.markdown_output import render_fix_report
+
+    project = make_project({
+        "app.js": "console.log('hi')\n",
+        "package.json": '{"name": "t", "version": "1.0.0"}\n',
+    })
+    outcome = run_scan(
+        ScanRequest(target=str(project), analyzers=["javascript"], allow_exec=False)
+    )
+    md = render_fix_report(outcome.report)
+    assert "exec: disabled" in md
+    assert "Analyzer notes" in md
+    assert "eslint" in md

@@ -16,10 +16,15 @@ class ScanContext:
         target: str | Path,
         skip_tests: bool = True,
         extra_ignore_dirs: set[str] | None = None,
+        allow_exec: bool = True,
     ) -> None:
         self.target = Path(target).resolve()
         self.skip_tests = skip_tests
         self.extra_ignore_dirs = extra_ignore_dirs or set()
+        # Whether analyzers may run tools that execute repo-controlled code
+        # (cargo check runs build.rs, eslint loads eslint.config.js, ...).
+        # False for untrusted targets, e.g. freshly cloned URLs.
+        self.allow_exec = allow_exec
         if not self.target.is_dir():
             raise FileNotFoundError(f"Target directory not found: {self.target}")
 

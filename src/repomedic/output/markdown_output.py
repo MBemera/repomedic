@@ -50,6 +50,7 @@ def render_fix_report(report: ScanReport, include_snippets: bool = True) -> str:
         f"shown: {len(report.findings)}",
         f"omitted: {s.omitted_findings}",
         f"languages: {langs}",
+        f"exec: {'allowed' if report.exec_allowed else 'disabled'}",
         "---",
         "",
         "# RepoMedic Fix Report",
@@ -59,6 +60,7 @@ def render_fix_report(report: ScanReport, include_snippets: bool = True) -> str:
     if not report.findings and not s.omitted_findings:
         lines += ["✅ **No issues found — the project is healthy.**", ""]
         _append_analyzer_failures(lines, report)
+        _append_skipped_checks(lines, report)
         _append_footer(lines, report)
         return "\n".join(lines)
 
@@ -97,6 +99,7 @@ def render_fix_report(report: ScanReport, include_snippets: bool = True) -> str:
         ]
 
     _append_analyzer_failures(lines, report)
+    _append_skipped_checks(lines, report)
 
     # --- Verification ---
     lines += ["## Verify after fixing", ""]
@@ -223,6 +226,21 @@ def _append_analyzer_failures(lines: list[str], report: ScanReport) -> None:
     lines += [
         "",
         "These analyzers crashed or could not run; their findings are missing from this report.",
+        "",
+    ]
+
+
+def _append_skipped_checks(lines: list[str], report: ScanReport) -> None:
+    skipped = [(r.analyzer, r.skipped_checks) for r in report.results if r.skipped_checks]
+    if not skipped:
+        return
+    lines += ["## Analyzer notes", ""]
+    for name, checks in skipped:
+        lines.append(f"- **{name}**: skipped code-executing checks: {', '.join(checks)}")
+    lines += [
+        "",
+        "These checks compile or execute repo-controlled code and were disabled "
+        "(`--no-exec` — the default for URL targets). Re-run with `--exec` if you trust this repo.",
         "",
     ]
 

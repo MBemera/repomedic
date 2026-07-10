@@ -67,6 +67,10 @@ class AnalyzerResult(BaseModel):
     findings: list[Finding] = Field(default_factory=list)
     error: str | None = None
     elapsed_seconds: float = 0.0
+    skipped_checks: list[str] = Field(
+        default_factory=list,
+        description="Checks this analyzer skipped (e.g. code-executing checks under --no-exec)",
+    )
 
 
 class ReportSummary(BaseModel):
@@ -93,6 +97,10 @@ class ScanReport(BaseModel):
     target: str
     timestamp: str = Field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
+    exec_allowed: bool = Field(
+        default=True,
+        description="Whether code-executing checks (cargo/go build, eslint, ...) were permitted",
     )
     languages: dict[str, int] = Field(
         default_factory=dict,

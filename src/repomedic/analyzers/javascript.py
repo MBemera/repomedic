@@ -23,23 +23,29 @@ class JavaScriptAnalyzer(BaseAnalyzer):
 
     def analyze(self, ctx: ScanContext) -> AnalyzerResult:
         findings: list[Finding] = []
+        skipped: list[str] = []
 
-        # 1. Syntax checks (node --check) for .js/.mjs/.cjs files
+        # 1. Syntax checks (node --check parses only, never executes)
         findings.extend(self._check_syntax(ctx))
 
-        # 2. ESLint linting
-        findings.extend(self._run_eslint(ctx))
+        # ESLint loads the repo's own eslint.config.js, and npx resolves
+        # repo-controlled node_modules/.bin — code execution by scan.
+        if ctx.allow_exec:
+            # 2. ESLint linting
+            findings.extend(self._run_eslint(ctx))
 
-        # 3. TypeScript type checking
-        findings.extend(self._run_tsc(ctx))
+            # 3. TypeScript type checking
+            findings.extend(self._run_tsc(ctx))
 
-        # 4. npm audit for vulnerabilities
-        findings.extend(self._run_npm_audit(ctx))
+            # 4. npm audit for vulnerabilities
+            findings.extend(self._run_npm_audit(ctx))
+        else:
+            skipped += ["eslint", "tsc", "npm-audit"]
 
-        # 5. Dependency presence analysis
+        # 5. Dependency presence analysis (pure file checks)
         findings.extend(self._check_dependencies(ctx))
 
-        return AnalyzerResult(analyzer=self.name, findings=findings)
+        return AnalyzerResult(analyzer=self.name, findings=findings, skipped_checks=skipped)
 
     def _check_syntax(self, ctx: ScanContext) -> list[Finding]:
         """Run node --check on JavaScript files to detect syntax errors."""

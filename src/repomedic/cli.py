@@ -123,6 +123,7 @@ def _execute_scan(
     fail_on: Optional[str],
     snippets: bool,
     analyzer_timeout: Optional[float] = None,
+    allow_exec: Optional[bool] = None,
 ) -> None:
     """CLI shell around the scan service: flags in, rendered output + exit code out."""
     if output not in {"rich", "json", "markdown", "md"}:
@@ -148,6 +149,7 @@ def _execute_scan(
         max_findings=max_findings,
         fail_on=fail_on,
         analyzer_timeout=analyzer_timeout,
+        allow_exec=allow_exec,
     )
 
     outcome: ScanOutcome | None = None
@@ -206,6 +208,7 @@ def scan(
     fail_on: Optional[str] = typer.Option(None, "--fail-on", help="Exit 1 when findings at/above: error, warning, any, never (default: never)"),
     snippets: bool = typer.Option(True, "--snippets/--no-snippets", help="Include code snippets in markdown reports"),
     analyzer_timeout: Optional[float] = typer.Option(None, "--analyzer-timeout", help="Seconds before an analyzer is abandoned (default 120; 0 = no limit)"),
+    allow_exec: Optional[bool] = typer.Option(None, "--exec/--no-exec", help="Allow checks that execute repo code (cargo/go build, eslint). Default: on for local paths, off for URLs"),
 ) -> None:
     """Scan a local folder or GitHub repo for issues (all analyzers, no prompts)."""
     _execute_scan(
@@ -221,6 +224,7 @@ def scan(
         fail_on=fail_on,
         snippets=snippets,
         analyzer_timeout=analyzer_timeout,
+        allow_exec=allow_exec,
     )
 
 
@@ -236,6 +240,7 @@ def sniff(
     report_file: Optional[str] = typer.Option(STDOUT_SENTINEL, "--report-file", "-r", help="Markdown report path (default '-' = stdout)"),
     snippets: bool = typer.Option(True, "--snippets/--no-snippets", help="Include code snippets"),
     analyzer_timeout: Optional[float] = typer.Option(None, "--analyzer-timeout", help="Seconds before an analyzer is abandoned (default 120; 0 = no limit)"),
+    allow_exec: Optional[bool] = typer.Option(None, "--exec/--no-exec", help="Allow checks that execute repo code (cargo/go build, eslint). Default: on for local paths, off for URLs"),
 ) -> None:
     """Bug-sniff a repo for agents: markdown fix report on stdout, exit 1 on errors."""
     _execute_scan(
@@ -251,6 +256,7 @@ def sniff(
         fail_on=fail_on,
         snippets=snippets,
         analyzer_timeout=analyzer_timeout,
+        allow_exec=allow_exec,
     )
 
 

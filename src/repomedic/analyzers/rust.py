@@ -22,22 +22,28 @@ class RustAnalyzer(BaseAnalyzer):
 
     def analyze(self, ctx: ScanContext) -> AnalyzerResult:
         findings: list[Finding] = []
+        skipped: list[str] = []
 
         # 1. Dependency checks first — `cargo check` generates Cargo.lock as a
         #    side effect, so the lock-file check must observe the state before it.
         findings.extend(self._check_dependencies(ctx))
 
-        # 2. Cargo check (compile errors)
-        findings.extend(self._cargo_check(ctx))
+        # cargo check/clippy compile the crate, which executes repo-controlled
+        # build.rs and proc-macros — only allowed for trusted targets.
+        if ctx.allow_exec:
+            # 2. Cargo check (compile errors)
+            findings.extend(self._cargo_check(ctx))
 
-        # 3. Clippy (lint warnings) — only if cargo check passed
-        if not any(f.severity == Severity.error for f in findings):
-            findings.extend(self._run_clippy(ctx))
+            # 3. Clippy (lint warnings) — only if cargo check passed
+            if not any(f.severity == Severity.error for f in findings):
+                findings.extend(self._run_clippy(ctx))
+        else:
+            skipped += ["cargo-check", "clippy"]
 
-        # 4. Cargo audit for vulnerabilities
+        # 4. Cargo audit for vulnerabilities (reads the lockfile only)
         findings.extend(self._run_cargo_audit(ctx))
 
-        return AnalyzerResult(analyzer=self.name, findings=findings)
+        return AnalyzerResult(analyzer=self.name, findings=findings, skipped_checks=skipped)
 
     def _cargo_check(self, ctx: ScanContext) -> list[Finding]:
         """Run cargo check to detect compile errors."""

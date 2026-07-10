@@ -35,6 +35,7 @@ class Scanner:
         only_files: set[str] | None = None,
         max_findings: int | None = None,
         analyzer_timeout: float | None = DEFAULT_ANALYZER_TIMEOUT,
+        allow_exec: bool = True,
     ) -> ScanReport:
         """Run applicable analyzers and return a ScanReport.
 
@@ -50,16 +51,24 @@ class Scanner:
             analyzer_timeout: Wall-clock seconds an analyzer may run before the
                 scanner abandons it (its result becomes an error entry).
                 None/0 disables the deadline.
+            allow_exec: Permit checks that execute repo-controlled code
+                (cargo/go builds, eslint config loading). Disable for
+                untrusted targets; skipped checks are recorded per analyzer.
         """
         start = time.monotonic()
-        ctx = ScanContext(target, skip_tests=skip_tests, extra_ignore_dirs=extra_ignore_dirs)
+        ctx = ScanContext(
+            target,
+            skip_tests=skip_tests,
+            extra_ignore_dirs=extra_ignore_dirs,
+            allow_exec=allow_exec,
+        )
         analyzers = get_all_analyzers()
 
         if analyzer_names:
             names = {n.strip().lower() for n in analyzer_names}
             analyzers = [a for a in analyzers if a.name in names]
 
-        report = ScanReport(target=str(ctx.target))
+        report = ScanReport(target=str(ctx.target), exec_allowed=allow_exec)
         # Warm the shared lazy caches on the main thread so worker threads
         # only ever read them — ScanContext has no locks.
         report.languages = ctx.language_counts

@@ -13,7 +13,11 @@ fix report — so you spend your tokens fixing bugs, not hunting for them.
 repomedic sniff <path>
 ```
 
-- **Non-interactive.** Never prompts. Safe to run unattended.
+- **Non-interactive.** Never prompts. Safe to run unattended **with `--no-exec`**
+  (the default for URL targets): no repo-controlled code executes. Local scans
+  default to `--exec`, which invokes project toolchains (`cargo check`, `go
+  build`, `npx eslint`) that can run repo-defined build code — pass `--no-exec`
+  when scanning a repo you don't trust.
 - **Markdown fix report on stdout.** Progress/status goes to stderr, so piping
   or capturing stdout gives you the report and nothing else.
 - **Exit code is the verdict:** `0` = no errors, `1` = errors found, `2` = usage error.
@@ -34,6 +38,7 @@ infos: 2
 shown: 10
 omitted: 0
 languages: python (24), typescript (9)
+exec: allowed
 ---
 
 # RepoMedic Fix Report
@@ -113,6 +118,8 @@ repomedic sniff . --changed --fail-on error
 | `--changed` / `--since REF` | Scope findings to git-changed files |
 | `-r, --report-file PATH` | Write markdown report to PATH (`-` = stdout) |
 | `--no-snippets` | Omit code snippets (smaller report) |
+| `--exec` / `--no-exec` | Allow/skip checks that execute repo code (cargo/go build, eslint). Default: `--exec` for local paths, `--no-exec` for URLs; skipped checks appear under "Analyzer notes" |
+| `--analyzer-timeout N` | Abandon an analyzer after N seconds (default 120; 0 = no limit) |
 | `-o, --output FORMAT` | `rich`, `json`, or `markdown` (scan only; sniff is always markdown) |
 
 ## JSON mode
