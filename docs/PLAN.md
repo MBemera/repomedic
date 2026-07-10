@@ -1,11 +1,12 @@
 # RepoMedic: Review, Agent Workflows, VS Code Debugger, and V&V Framework
 
-> **Status (2026-07-10):** Phase 0 is implemented on this branch through item 0.9
-> (CI bootstrap, ProcessResult redesign, scan_service extraction, per-analyzer
-> timeouts, shared helpers, symlink containment + hardened git, --exec/--no-exec
-> trust model, report sanitization + secret redaction, fingerprint v2 + schema 3).
-> Remaining: 0.10 (typed command payloads + py.typed + version bump), then
-> Phases 1–3 below. Each numbered item maps to one commit on this branch.
+> **Status (2026-07-10): Phase 0 complete (v0.3.0)** — CI bootstrap, ProcessResult
+> redesign, scan_service extraction, per-analyzer timeouts, shared helpers,
+> symlink containment + hardened git, --exec/--no-exec trust model, report
+> sanitization + secret redaction, fingerprint v2 + schema 3, typed command
+> payloads + py.typed. Each numbered item below maps to one commit on this
+> branch. **Next: Phase 1** (SARIF, baseline + suppressions, MCP server,
+> agents-guide single-sourcing, GitHub Action + pre-commit, schema export).
 
 ## Context
 
