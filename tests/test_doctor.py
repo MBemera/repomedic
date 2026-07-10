@@ -24,6 +24,7 @@ def test_collect_doctor_basic(tmp_path):
     result = collect_doctor(tmp_path)
     assert result.schema_version == 1
     assert len(result.checks) > 0
+    assert any(check.name == "debugpy" for check in result.checks)
 
 
 def test_collect_doctor_detects_missing_venv(tmp_path):

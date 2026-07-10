@@ -8,7 +8,12 @@ from pathlib import Path
 import pytest
 
 from repomedic.debug import session
-from repomedic.debug.session import CaptureBounds, capture_python_crash
+from repomedic.debug.session import (
+    CaptureBounds,
+    DebugCaptureStatus,
+    capture_python_crash,
+    capture_python_crash_outcome,
+)
 
 
 def test_capture_bounds_reject_unbounded_values() -> None:
@@ -26,6 +31,10 @@ def test_missing_debugpy_returns_none(
     monkeypatch.setattr(session.importlib.util, "find_spec", lambda name: None)
 
     assert capture_python_crash(script, timeout=1) is None
+    assert (
+        capture_python_crash_outcome(script, timeout=1).status
+        is DebugCaptureStatus.unavailable
+    )
 
 
 def test_debugger_start_failure_returns_none(
@@ -107,13 +116,27 @@ def test_real_debugpy_captures_uncaught_exception(tmp_path: Path) -> None:
     assert "unstructured-sensitive-value" not in capture.stdout_tail
 
 
+def test_real_debugpy_reports_clean_completion(tmp_path: Path) -> None:
+    pytest.importorskip("debugpy")
+    script = tmp_path / "clean.py"
+    script.write_text("print('completed', flush=True)\n")
+
+    outcome = capture_python_crash_outcome(script, cwd=tmp_path, timeout=15)
+
+    assert outcome.status is DebugCaptureStatus.completed
+    assert outcome.capture is None
+    assert outcome.returncode == 0
+    assert "completed" in outcome.stdout_tail
+
+
 def test_real_debugpy_timeout_kills_hanging_script(tmp_path: Path) -> None:
     pytest.importorskip("debugpy")
     script = tmp_path / "hang.py"
     script.write_text("while True:\n    pass\n")
     started = time.monotonic()
 
-    capture = capture_python_crash(script, cwd=tmp_path, timeout=3)
+    outcome = capture_python_crash_outcome(script, cwd=tmp_path, timeout=3)
 
-    assert capture is None
+    assert outcome.status is DebugCaptureStatus.timed_out
+    assert outcome.capture is None
     assert time.monotonic() - started < 6

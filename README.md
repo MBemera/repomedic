@@ -44,7 +44,7 @@ repomedic sniff . --changed --fail-on error   # re-check only touched files; exi
 | **hygiene** | Oversized files, TODO/FIXME buildup, broken symlinks | any |
 | **logs** | Error patterns and tracebacks in log files | any |
 | **semgrep** | Advanced multi-language SAST (if installed) | 30+ |
-| **runtime** | Execute a script and analyze the failure (`repomedic run`) | py, js, sh, rb, php, pl, lua |
+| **runtime** | Execute a script and analyze the failure; capture Python frames and locals through DAP (`repomedic debug`) | py, js, sh, rb, php, pl, lua |
 
 Language detection covers 30+ languages (Python, JS/TS, Go, Rust, Java, Kotlin, C/C++, C#, Ruby, PHP, Swift, shell, SQL, Terraform, …) and drives per-language verify commands in the fix report.
 
@@ -55,6 +55,7 @@ Language detection covers 30+ languages (Python, JS/TS, Go, Rust, Java, Kotlin, 
 | `repomedic sniff [PATH]` | **The agent command**: scan and print the markdown fix report to stdout; exit 1 on errors |
 | `repomedic [PATH]` | Scan with a rich terminal UI (health score, tables) — shorthand for `repomedic scan` |
 | `repomedic run script.py` | Run a script (any supported language) and analyze the failure |
+| `repomedic debug script.py` | Capture an uncaught Python exception with bounded frames and redacted locals |
 | `repomedic doctor` | Check the dev environment: interpreters, toolchains, project dependencies |
 | `repomedic explain` | Describe a project: type, languages, dependencies, structure |
 | `repomedic fix [--dry-run]` | Auto-fix safe issues (ruff, .gitignore, .env.example) |
@@ -72,6 +73,9 @@ pip install -e .
 
 # optional: deeper analysis tools
 pip install -e ".[tools]"        # semgrep + bandit
+
+# optional: debugger capture only (included by the dev extra)
+pip install -e ".[debug]"        # debugpy
 ```
 
 Requires **Python 3.11+**. Core dependencies: `typer`, `pydantic`, `rich`, `pyyaml`. External tools (ruff, node, go, cargo, shellcheck, gitleaks) are used when present and skipped gracefully when not — `repomedic doctor` shows what's available.
@@ -99,6 +103,12 @@ repomedic . -a static,git,security -s warning --max-findings 25
 
 # Gate CI on errors
 repomedic . -o json --fail-on error
+
+# Capture a Python crash with frames and local variables
+repomedic debug path/to/script.py --timeout 60 -o json
+
+# Use the same debugger path through the multi-language run command
+repomedic run path/to/script.py --debug -o markdown
 ```
 
 ## The fix report
@@ -194,6 +204,9 @@ src/repomedic/
 │   ├── rich_output.py     # Terminal UI
 │   ├── markdown_output.py # Agent handoff report
 │   └── json_output.py     # JSON output
+├── debug/
+│   ├── dap.py             # Bounded Debug Adapter Protocol transport
+│   └── session.py         # Headless debugpy crash capture
 └── utils/
     ├── process.py         # Subprocess runner with timeouts
     ├── fs.py              # File discovery with ignore rules

@@ -139,6 +139,30 @@ data = eval(user_input)  # repomedic: ignore[SEC-003]
 - `repomedic: ignore[STATIC-001, SEC-002]` — list
 - Works trailing on the flagged line or on its own line directly above.
 
+## Debugger crash capture
+
+For a trusted Python script, capture the uncaught exception plus bounded stack
+frames and depth-one local variables through the Debug Adapter Protocol:
+
+```bash
+repomedic debug path/to/script.py --timeout 60 --max-frames 20 --max-vars 25 -o json
+repomedic run path/to/script.py --debug -o markdown
+```
+
+- Python debugger failures emit `RUN-004` with structured state under
+  `finding.metadata.debug`; markdown renders the same state inside a dynamic
+  fence as untrusted data. JavaScript and other supported languages keep the
+  existing stderr/traceback parsers for now.
+- `--timeout` is a whole-session deadline. Expiry kills the debugger process
+  group and emits `RUN-001`; the script is never run a second time after a
+  completed, failed, or timed-out debugger session.
+- Frame count, variables per frame, variable value length, DAP messages, event
+  queues, and stdout/stderr tails are bounded. Common credential shapes and
+  sensitive variable names are redacted before JSON or markdown serialization.
+- **These commands execute the target with the inherited environment.** Only
+  debug scripts you trust, use narrowly scoped development credentials, and do
+  not treat best-effort redaction as permission to expose production secrets.
+
 ## All commands
 
 | Command | Purpose | Default output |
@@ -147,6 +171,7 @@ data = eval(user_input)  # repomedic: ignore[SEC-003]
 | `repomedic [PATH]` / `repomedic scan [PATH]` | Full scan | rich terminal UI, `--fail-on never` |
 | `repomedic baseline [PATH]` | Accept current findings into `.repomedic-baseline.json` | rich; `-o json` |
 | `repomedic run SCRIPT [ARGS…]` | Execute a script (`.py .js .mjs .cjs .sh .bash .rb .php .pl .lua`) and analyze the failure | JSON |
+| `repomedic debug SCRIPT [ARGS…]` | Capture a Python crash with bounded frames and redacted locals | JSON; `-o rich` / `-o markdown` |
 | `repomedic doctor [PATH]` | Environment/toolchain health (exit 1 if something required is missing) | rich; `-o json` |
 | `repomedic explain [PATH]` | Project brief: type, languages, dependencies | rich; `-o markdown` / `-o json` |
 | `repomedic fix [PATH]` | Safe auto-fixes (ruff --fix, .gitignore, .env.example) | rich; `--dry-run`, `-o json` |
@@ -225,6 +250,7 @@ config key — a scanned repo must never be able to grant itself execution.
 | `1` | Findings at/above the threshold (for `sniff`: errors exist) |
 | `2` | Usage error — bad path, unknown analyzer, invalid flag value |
 
-`repomedic run` exits `1` when the script failed to run (unsupported
-extension, missing interpreter) or ran with errors, and `0` when it ran
-cleanly. `repomedic doctor` exits `1` when a required tool/dependency is missing.
+`repomedic run` and `repomedic debug` exit `1` when the script failed to run
+(unsupported extension, missing interpreter), timed out, or ran with errors;
+they exit `0` when it ran cleanly. `repomedic doctor` exits `1` when a required
+tool/dependency is missing.

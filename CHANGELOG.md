@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- Headless, stdlib-only DAP client with bounded messages, request correlation,
+  event queues, wall-clock deadlines, and fail-closed protocol validation.
+- Python crash capture through loopback-only `debugpy`, including bounded
+  frames, depth-one locals, output tails, secret redaction, and process-group
+  cleanup on timeout.
+- `repomedic debug SCRIPT [ARGS…]` and `repomedic run --debug`, with JSON,
+  rich, and markdown output plus `--timeout`, `--max-frames`, and `--max-vars`.
+- `RUN-004` debugger findings anchored at the deepest user frame. JSON carries
+  structured debug metadata; markdown quarantines it in a dynamic fenced block.
+
+### Fixed
+- Runtime debug fallback no longer risks executing a clean, failed, or timed-out
+  script twice when debugger capture returns no exception.
+- Runtime stderr is redacted before traceback findings or metadata are created.
+- CLI tests explicitly separate stderr from stdout across supported Typer/Click
+  versions, preserving the machine-output contract in the test harness.
+
 ## 0.3.0 (2026-07-10)
 
 Hardening release: RepoMedic is now safe to point at untrusted repos, and

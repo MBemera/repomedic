@@ -13,6 +13,7 @@ import time
 from collections.abc import Sequence
 from concurrent.futures import Future, TimeoutError as FutureTimeoutError
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 from typing import IO, Any
 
@@ -84,6 +85,27 @@ class DebugCapture:
     stderr_tail: str = ""
 
 
+class DebugCaptureStatus(str, Enum):
+    """Result state for one debugger-backed script execution."""
+
+    unavailable = "unavailable"
+    completed = "completed"
+    captured = "captured"
+    timed_out = "timed_out"
+    failed = "failed"
+
+
+@dataclass(frozen=True)
+class DebugCaptureOutcome:
+    """Execution result used by the runtime analyzer to avoid reruns."""
+
+    status: DebugCaptureStatus
+    capture: DebugCapture | None = None
+    returncode: int | None = None
+    stdout_tail: str = ""
+    stderr_tail: str = ""
+
+
 @dataclass
 class _DebugProcess:
     process: subprocess.Popen[bytes]
@@ -128,14 +150,31 @@ def capture_python_crash(
     bounds: CaptureBounds | None = None,
 ) -> DebugCapture | None:
     """Capture an uncaught Python exception, returning ``None`` on fallback."""
+    return capture_python_crash_outcome(
+        script,
+        args=args,
+        cwd=cwd,
+        timeout=timeout,
+        bounds=bounds,
+    ).capture
+
+
+def capture_python_crash_outcome(
+    script: str | Path,
+    args: Sequence[str] | None = None,
+    cwd: str | Path | None = None,
+    timeout: float = 60,
+    bounds: CaptureBounds | None = None,
+) -> DebugCaptureOutcome:
+    """Run one debugger session and report whether the target already ran."""
     if timeout <= 0:
         raise ValueError("timeout must be positive")
     if not _debugpy_available():
-        return None
+        return _unavailable_outcome()
 
     capture_paths = _resolve_capture_paths(script, cwd)
     if capture_paths is None:
-        return None
+        return _unavailable_outcome()
     script_path, working_directory = capture_paths
 
     capture_bounds = bounds or CaptureBounds()
@@ -148,9 +187,13 @@ def capture_python_crash(
         capture_bounds,
     )
     if debug_process is None or connection is None:
-        return None
+        return _unavailable_outcome()
 
     return _capture_and_cleanup(debug_process, connection, deadline, capture_bounds)
+
+
+def _unavailable_outcome() -> DebugCaptureOutcome:
+    return DebugCaptureOutcome(status=DebugCaptureStatus.unavailable)
 
 
 def _start_capture_process(
@@ -192,27 +235,49 @@ def _capture_and_cleanup(
     connection: socket.socket,
     deadline: float,
     bounds: CaptureBounds,
-) -> DebugCapture | None:
+) -> DebugCaptureOutcome:
     client = DapClient(connection)
     capture: DebugCapture | None = None
+    status = DebugCaptureStatus.completed
     try:
         capture = _run_debug_session(client, debug_process.process, deadline, bounds)
+        if capture is not None:
+            status = DebugCaptureStatus.captured
+    except DapTimeoutError:
+        status = DebugCaptureStatus.timed_out
+        logger.warning("Python debugger session timed out")
     except (DapError, OSError, FutureTimeoutError, ValueError):
-        logger.warning(
-            "Python debugger capture failed; falling back to traceback analysis"
-        )
+        status = DebugCaptureStatus.failed
+        logger.warning("Python debugger capture failed")
     finally:
         client.close()
         _finish_process(debug_process, deadline)
 
+    stdout_tail = debug_process.stdout.text()
+    stderr_tail = debug_process.stderr.text()
+    capture = _capture_with_output(capture, stdout_tail, stderr_tail)
+    return DebugCaptureOutcome(
+        status=status,
+        capture=capture,
+        returncode=debug_process.process.returncode,
+        stdout_tail=stdout_tail,
+        stderr_tail=stderr_tail,
+    )
+
+
+def _capture_with_output(
+    capture: DebugCapture | None,
+    stdout_tail: str,
+    stderr_tail: str,
+) -> DebugCapture | None:
     if capture is None:
         return None
     return DebugCapture(
         exception_type=capture.exception_type,
         message=capture.message,
         frames=capture.frames,
-        stdout_tail=debug_process.stdout.text(),
-        stderr_tail=debug_process.stderr.text(),
+        stdout_tail=stdout_tail,
+        stderr_tail=stderr_tail,
     )
 
 
@@ -324,6 +389,8 @@ def _run_debug_session(
 
     stopped = _wait_for_exception_stop(client, deadline)
     if stopped is None:
+        if not _wait_for_process(process, deadline):
+            raise DapTimeoutError("Timed out waiting for the debuggee to exit")
         return None
     capture = _capture_exception(client, stopped, deadline, bounds)
     _continue_process(client, stopped, deadline)
@@ -535,14 +602,15 @@ def _continue_process(client: DapClient, stopped: DapMessage, deadline: float) -
         pass
 
 
-def _wait_for_process(process: subprocess.Popen[bytes], deadline: float) -> None:
+def _wait_for_process(process: subprocess.Popen[bytes], deadline: float) -> bool:
     remaining = _remaining(deadline)
     if remaining <= 0:
-        return
+        return process.poll() is not None
     try:
         process.wait(timeout=remaining)
     except subprocess.TimeoutExpired:
-        pass
+        return False
+    return True
 
 
 def _finish_process(debug_process: _DebugProcess, deadline: float) -> None:

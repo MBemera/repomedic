@@ -12,6 +12,7 @@ is optimized for LLM consumption:
 
 from __future__ import annotations
 
+import json
 import re
 import shlex
 from pathlib import Path
@@ -43,7 +44,10 @@ def render_fix_report(report: ScanReport, include_snippets: bool = True) -> str:
     # --- YAML front matter: machine-readable summary ---
     # Values that can carry arbitrary text (paths) are JSON-quoted so no
     # newline or quote can break the key: value block agents parse.
-    langs = ", ".join(f"{name} ({count})" for name, count in report.languages.items()) or "none detected"
+    langs = (
+        ", ".join(f"{name} ({count})" for name, count in report.languages.items())
+        or "none detected"
+    )
     lines += [
         "---",
         "tool: repomedic",
@@ -94,7 +98,11 @@ def render_fix_report(report: ScanReport, include_snippets: bool = True) -> str:
     target_root = Path(report.target)
     for file_key, findings in _group_by_file(report.findings):
         counts = _severity_counts(findings)
-        heading = file_key if file_key == PROJECT_LEVEL else f"`{sanitize_inline(file_key, 200)}`"
+        heading = (
+            file_key
+            if file_key == PROJECT_LEVEL
+            else f"`{sanitize_inline(file_key, 200)}`"
+        )
         lines += [f"### {heading} — {counts}", ""]
         for finding in findings:
             _append_finding(lines, finding, target_root, include_snippets)
@@ -111,7 +119,9 @@ def render_fix_report(report: ScanReport, include_snippets: bool = True) -> str:
 
     # --- Verification ---
     lines += ["## Verify after fixing", ""]
-    lines.append(f"- `repomedic sniff {shlex.quote(report.target)} --fail-on error` — must exit 0")
+    lines.append(
+        f"- `repomedic sniff {shlex.quote(report.target)} --fail-on error` — must exit 0"
+    )
     for cmd in verify_commands_for(list(report.languages)):
         lines.append(f"- `{cmd}`")
     lines.append("")
@@ -145,7 +155,9 @@ def _group_by_file(findings: list[Finding]) -> list[tuple[str, list[Finding]]]:
         groups.setdefault(f.file_path or PROJECT_LEVEL, []).append(f)
 
     for file_findings in groups.values():
-        file_findings.sort(key=lambda f: (SEVERITY_ORDER.get(f.severity.value, 2), f.line or 0))
+        file_findings.sort(
+            key=lambda f: (SEVERITY_ORDER.get(f.severity.value, 2), f.line or 0)
+        )
 
     def group_key(item: tuple[str, list[Finding]]) -> tuple[int, int, str]:
         file_key, file_findings = item
@@ -182,6 +194,7 @@ def _append_finding(
     lines.append("")
     lines.extend(fenced_block(finding.description, "text"))
     lines.append("")
+    _append_debug_state(lines, finding)
     if finding.suggestion:
         if "\n" in finding.suggestion:
             lines.append("**Fix:**")
@@ -194,6 +207,21 @@ def _append_finding(
         if snippet:
             lines.append(snippet)
             lines.append("")
+
+
+def _append_debug_state(lines: list[str], finding: Finding) -> None:
+    debug_state = finding.metadata.get("debug")
+    if not isinstance(debug_state, dict):
+        return
+    try:
+        serialized = json.dumps(
+            debug_state, indent=2, ensure_ascii=False, sort_keys=True
+        )
+    except (TypeError, ValueError):
+        return
+    lines.append("**Debug state:**")
+    lines.extend(fenced_block(serialized, "json"))
+    lines.append("")
 
 
 def _snippet_for(finding: Finding, target_root: Path) -> str | None:
@@ -253,12 +281,16 @@ def _append_analyzer_failures(lines: list[str], report: ScanReport) -> None:
 
 
 def _append_skipped_checks(lines: list[str], report: ScanReport) -> None:
-    skipped = [(r.analyzer, r.skipped_checks) for r in report.results if r.skipped_checks]
+    skipped = [
+        (r.analyzer, r.skipped_checks) for r in report.results if r.skipped_checks
+    ]
     if not skipped:
         return
     lines += ["## Analyzer notes", ""]
     for name, checks in skipped:
-        lines.append(f"- **{name}**: skipped code-executing checks: {', '.join(checks)}")
+        lines.append(
+            f"- **{name}**: skipped code-executing checks: {', '.join(checks)}"
+        )
     lines += [
         "",
         "These checks compile or execute repo-controlled code and were disabled "

@@ -7,6 +7,7 @@ JSON for agents without any table noise on stdout.
 from __future__ import annotations
 
 import logging
+import sys
 import tomllib
 from pathlib import Path
 
@@ -28,6 +29,11 @@ OPTIONAL = "OPTIONAL"
 
 # Optional analysis tools repomedic integrates with, and why they're useful.
 _OPTIONAL_TOOLS: list[tuple[str, list[str], str]] = [
+    (
+        "debugpy",
+        [sys.executable, "-m", "debugpy", "--version"],
+        "pip install 'repomedic[debug]'",
+    ),
     ("semgrep", ["semgrep", "--version"], "pip install semgrep"),
     ("gitleaks", ["gitleaks", "version"], "https://github.com/gitleaks/gitleaks"),
     ("shellcheck", ["shellcheck", "--version"], "apt/brew install shellcheck"),

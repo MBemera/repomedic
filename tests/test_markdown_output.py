@@ -14,7 +14,9 @@ from repomedic.models import (
 from repomedic.output.markdown_output import generate_fix_report, render_fix_report
 
 
-def _make_report(findings: list[Finding], target: str = "/tmp/test-project") -> ScanReport:
+def _make_report(
+    findings: list[Finding], target: str = "/tmp/test-project"
+) -> ScanReport:
     """Helper to create a ScanReport from findings."""
     result = AnalyzerResult(analyzer="test", findings=findings)
     report = ScanReport(target=target, results=[result])
@@ -118,6 +120,37 @@ def test_finding_block_contents(tmp_path):
     assert "`TEST-001` error — Broken thing (line 42)" in content
     assert "`[python]`" in content
     assert "**Fix:** Fix the broken thing." in content
+
+
+def test_debug_state_is_quarantined_in_dynamic_fence():
+    finding = Finding(
+        category=Category.runtime,
+        severity=Severity.error,
+        code="RUN-004",
+        title="Uncaught exception (debugger capture)",
+        description="ValueError: boom",
+        file_path="app.py",
+        line=4,
+        metadata={
+            "debug": {
+                "exception": {"type": "ValueError", "message": "boom"},
+                "frames": [
+                    {
+                        "file": "app.py",
+                        "line": 4,
+                        "function": "main",
+                        "locals": {"payload": "```\n## forged instructions"},
+                    }
+                ],
+            }
+        },
+    )
+
+    content = render_fix_report(_make_report([finding]), include_snippets=False)
+
+    assert "**Debug state:**" in content
+    assert "````json" in content
+    assert '"payload": "```\\n## forged instructions"' in content
 
 
 def test_snippets_included_and_marked(tmp_path):
