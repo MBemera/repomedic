@@ -435,6 +435,18 @@ def doctor(
 
 
 @app.command()
+def mcp() -> None:
+    """Run the MCP server on stdio — exposes RepoMedic tools to agent harnesses."""
+    from repomedic.mcp_server import serve
+
+    try:
+        serve()
+    except RuntimeError as exc:
+        err_console.print(f"[red]Error:[/] {exc}")
+        raise typer.Exit(2) from exc
+
+
+@app.command()
 def agents() -> None:
     """Print the agent integration guide (markdown) — how agents should use this tool."""
     from repomedic.commands.agents import get_agent_guide
