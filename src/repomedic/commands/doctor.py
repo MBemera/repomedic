@@ -15,6 +15,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from repomedic.analyzers.dependencies import parse_dep_name
+from repomedic.models_commands import DoctorCheck, DoctorReport
 from repomedic.utils.process import run
 
 logger = logging.getLogger("repomedic")
@@ -93,7 +94,7 @@ def _check_dependencies_installed(target: Path) -> list[tuple[str, str, str]]:
     return findings
 
 
-def collect_doctor(target: Path) -> dict:
+def collect_doctor(target: Path) -> DoctorReport:
     """Gather environment health data without printing anything."""
     checks: list[tuple[str, str, str]] = []
     fix_commands: list[str] = []
@@ -162,15 +163,15 @@ def collect_doctor(target: Path) -> dict:
     if missing_deps:
         fix_commands.append(f"pip install {' '.join(missing_deps)}")
 
-    return {
-        "target": str(target),
-        "checks": checks,
-        "fix_commands": fix_commands,
-        "healthy": not any(status == MISSING for _, _, status in checks),
-    }
+    return DoctorReport(
+        target=str(target),
+        checks=[DoctorCheck(name=n, info=i, status=s) for n, i, s in checks],  # type: ignore[arg-type]
+        fix_commands=fix_commands,
+        healthy=not any(status == MISSING for _, _, status in checks),
+    )
 
 
-def render_doctor(data: dict, out: Console | None = None) -> None:
+def render_doctor(report: DoctorReport, out: Console | None = None) -> None:
     """Render collected doctor data as rich tables."""
     out = out or console
     table = Table(title="Environment Health Check", show_header=True, header_style="bold", expand=True)
@@ -178,20 +179,20 @@ def render_doctor(data: dict, out: Console | None = None) -> None:
     table.add_column("Version / Info", min_width=25)
     table.add_column("Status", width=10, justify="center")
 
-    for name, info, status in data["checks"]:
-        if status == OK:
+    for check in report.checks:
+        if check.status == OK:
             style, icon = "green", "✓"
-        elif status == OPTIONAL:
+        elif check.status == OPTIONAL:
             style, icon = "dim", "○"
         else:
             style, icon = "red", "✗"
-        table.add_row(name, info, f"[{style}]{icon} {status}[/{style}]")
+        table.add_row(check.name, check.info, f"[{style}]{icon} {check.status}[/{style}]")
 
     out.print(table)
 
-    if data["fix_commands"]:
+    if report.fix_commands:
         out.print()
-        lines = [f"  [bold]{i}.[/] [cyan]{cmd}[/]" for i, cmd in enumerate(data["fix_commands"], 1)]
+        lines = [f"  [bold]{i}.[/] [cyan]{cmd}[/]" for i, cmd in enumerate(report.fix_commands, 1)]
         out.print(Panel("\n".join(lines), title="Fix Commands", border_style="yellow"))
     else:
         out.print()

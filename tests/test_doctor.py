@@ -22,23 +22,22 @@ def test_collect_doctor_basic(tmp_path):
     # Create a minimal project
     (tmp_path / "pyproject.toml").write_text('[project]\nname = "test"\n')
     result = collect_doctor(tmp_path)
-    assert "checks" in result
-    assert "fix_commands" in result
-    assert len(result["checks"]) > 0
+    assert result.schema_version == 1
+    assert len(result.checks) > 0
 
 
 def test_collect_doctor_detects_missing_venv(tmp_path):
     (tmp_path / "pyproject.toml").write_text('[project]\nname = "test"\n')
     result = collect_doctor(tmp_path)
-    venv_checks = [c for c in result["checks"] if "Virtual env" in c[0]]
+    venv_checks = [c for c in result.checks if "Virtual env" in c.name]
     assert len(venv_checks) == 1
-    assert venv_checks[0][2] == "MISSING"
+    assert venv_checks[0].status == "MISSING"
 
 
 def test_collect_doctor_detects_venv(tmp_path):
     (tmp_path / "pyproject.toml").write_text('[project]\nname = "test"\n')
     (tmp_path / ".venv").mkdir()
     result = collect_doctor(tmp_path)
-    venv_checks = [c for c in result["checks"] if "Virtual env" in c[0]]
+    venv_checks = [c for c in result.checks if "Virtual env" in c.name]
     assert len(venv_checks) == 1
-    assert venv_checks[0][2] == "OK"
+    assert venv_checks[0].status == "OK"

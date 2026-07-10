@@ -1,5 +1,72 @@
 # Changelog
 
+## 0.3.0 (2026-07-10)
+
+Hardening release: RepoMedic is now safe to point at untrusted repos, and
+its reports are safe to feed to agents. Report schema bumps to **3**.
+
+**Schema policy** (applies from here on): `schema_version` bumps only on
+removed/renamed fields or semantics changes; additive fields never bump.
+Non-scan command payloads (doctor/explain/fix/list-analyzers) carry their
+own independent `schema_version` (currently 1).
+
+### Security
+- **Trust model**: new `--exec/--no-exec` gates checks that execute
+  repo-controlled code (`cargo check`/`clippy`, `go build`/`vet`/
+  `govulncheck`, `npx eslint`/`tsc`, `npm audit`). Local paths default
+  `--exec`; GitHub-URL targets default `--no-exec`. Skipped checks are
+  reported per analyzer (`skipped_checks`), in the markdown "Analyzer
+  notes" section, and as `exec: allowed|disabled` in the front matter.
+  Deliberately not configurable from the scanned repo's own config.
+- **Secret redaction**: detected secret values are masked everywhere
+  (prefix + hash handle + length). Raw gitleaks matches are no longer
+  stored in finding metadata, and snippets are withheld for
+  secret-bearing findings — `--output json` and the fix report no longer
+  print secrets verbatim.
+- **Report sanitization**: finding titles/descriptions/suggestions are
+  neutralized before rendering (headings can't be forged, fences can't be
+  closed from inside, the YAML front matter can't be broken). The agent
+  instructions now state that fenced content is untrusted repo data. The
+  rich TUI escapes repo-controlled text so it can't inject styling.
+- **Scan containment**: file discovery never follows directory symlinks
+  and drops file symlinks that resolve outside the scan root; snippet
+  rendering enforces the same rule. Git inspection forces
+  `core.fsmonitor=false` and an empty `hooksPath` so a repo's own
+  `.git/config` can't execute commands during `git status`.
+- **Subprocess isolation**: child processes get an allowlisted
+  environment by default (`AWS_*`, `GITHUB_TOKEN`, etc. never reach
+  repo tools); output capture is capped at 1 MiB/stream; timeouts kill
+  the whole process group. `repomedic run` keeps the full environment
+  (the user asked to run their own script). Clones pass `--` and
+  `GIT_TERMINAL_PROMPT=0`.
+
+### Changed
+- **Fingerprints (v2)**: `RM-…` IDs now hash the flagged line's content
+  plus an occurrence index instead of the line number — inserting or
+  deleting lines above a finding no longer changes its ID. Editing the
+  flagged line does (it's a different finding).
+- **Process results**: tool invocations report a distinct status
+  (`ok`/`not_found`/`timed_out`/`failed_to_start`) instead of sentinel
+  return codes that collided with signal deaths. A linter killed by a
+  signal is no longer misread as "not installed" (which also fixes a
+  fake "JavaScript syntax error" when node was missing and a fake
+  "Detached HEAD" when git was missing).
+- **Per-analyzer timeout**: `--analyzer-timeout` (default 120s; config
+  key `analyzer_timeout`) abandons a hung analyzer instead of hanging
+  the scan.
+- **Typed command payloads**: `doctor`, `explain`, `fix`, and
+  `list-analyzers` JSON output are now versioned pydantic models
+  (`schema_version: 1`) instead of ad-hoc dicts. `fix -o json` returns
+  `{target, dry_run, actions: […]}`; `list-analyzers -o json` returns
+  `{analyzers: […]}`.
+- Scan orchestration extracted into an embeddable service
+  (`repomedic.core.service.run_scan`) that never prints, prompts, or
+  exits — reusable by MCP servers, editors, and test harnesses.
+- `--changed`/`--since` parse `git status -z` (quoted/unicode paths
+  survive); front-matter string values are JSON-quoted.
+- Package ships `py.typed`; CI (ruff, mypy, pytest on 3.11–3.13) runs on
+  every push.
+
 ## 0.2.0 (2026-07-07)
 
 Agent-first refactor: repomedic is now designed to be operated by AI coding

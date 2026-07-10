@@ -115,7 +115,9 @@ def test_agents_command_prints_guide():
 
 def test_list_analyzers_json():
     result = runner.invoke(app, ["list-analyzers", "-o", "json"])
-    names = {a["name"] for a in json.loads(result.stdout)}
+    data = json.loads(result.stdout)
+    assert data["schema_version"] == 1
+    names = {a["name"] for a in data["analyzers"]}
     assert {"static", "git", "security", "shell", "hygiene"} <= names
 
 
@@ -136,8 +138,9 @@ def test_explain_markdown(clean_project):
 def test_fix_dry_run_writes_nothing(make_project):
     project = make_project({"app.py": "x = 1\n"})
     result = runner.invoke(app, ["fix", str(project), "--dry-run", "-o", "json"])
-    rows = json.loads(result.stdout)
-    gitignore_row = next(r for r in rows if r["action"] == ".gitignore")
+    data = json.loads(result.stdout)
+    assert data["dry_run"] is True
+    gitignore_row = next(r for r in data["actions"] if r["action"] == ".gitignore")
     assert gitignore_row["status"] == "WOULD FIX"
     assert not (project / ".gitignore").exists()
 

@@ -9,7 +9,6 @@ Agent-first design rules:
 
 from __future__ import annotations
 
-import json as json_lib
 from pathlib import Path
 from typing import Optional  # noqa: UP035
 
@@ -307,12 +306,14 @@ def list_analyzers(
     output: str = typer.Option("rich", "--output", "-o", help="Output format: rich or json"),
 ) -> None:
     """List all available analyzers."""
+    from repomedic.models_commands import AnalyzerInfo, AnalyzerList
+
     analyzers = get_all_analyzers()
     if output == "json":
-        typer.echo(json_lib.dumps(
-            [{"name": a.name, "description": a.description} for a in analyzers],
-            indent=2,
-        ))
+        payload = AnalyzerList(
+            analyzers=[AnalyzerInfo(name=a.name, description=a.description) for a in analyzers]
+        )
+        typer.echo(payload.model_dump_json(indent=2))
         return
     for a in analyzers:
         console.print(f"  [bold]{a.name}[/] — {a.description}")
@@ -328,13 +329,12 @@ def fix(
     path = _resolve_dir(target)
 
     from repomedic.commands.fix import collect_fixes, render_fixes
+    from repomedic.models_commands import FixReport
 
     fixes = collect_fixes(path, dry_run=dry_run)
     if output == "json":
-        typer.echo(json_lib.dumps(
-            [{"action": a, "description": d, "status": s} for a, d, s in fixes],
-            indent=2,
-        ))
+        payload = FixReport(target=str(path), dry_run=dry_run, actions=fixes)
+        typer.echo(payload.model_dump_json(indent=2))
         return
     console.print(f"\n[cyan]{'Previewing fixes for' if dry_run else 'Fixing'}[/] {path} ...\n")
     render_fixes(fixes, dry_run)
@@ -352,7 +352,7 @@ def explain(
 
     data = collect_explain(path)
     if output == "json":
-        typer.echo(json_lib.dumps(data, indent=2))
+        typer.echo(data.model_dump_json(indent=2))
     elif output in ("markdown", "md"):
         typer.echo(render_explain_markdown(data))
     else:
@@ -371,11 +371,11 @@ def doctor(
 
     data = collect_doctor(path)
     if output == "json":
-        typer.echo(json_lib.dumps(data, indent=2))
+        typer.echo(data.model_dump_json(indent=2))
     else:
         console.print(f"\n[cyan]Checking environment for[/] {path} ...\n")
         render_doctor(data, console)
-    raise typer.Exit(0 if data["healthy"] else 1)
+    raise typer.Exit(0 if data.healthy else 1)
 
 
 @app.command()

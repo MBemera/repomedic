@@ -54,5 +54,6 @@ def test_collect_explain(tmp_path):
     )
     (tmp_path / "app.py").write_text("from flask import Flask\napp = Flask(__name__)\n")
     result = collect_explain(tmp_path)
-    assert "project_type" in result
-    assert "dependencies" in result
+    assert result.schema_version == 1
+    assert result.project_type
+    assert any(d.name == "flask" for d in result.dependencies)
