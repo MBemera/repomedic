@@ -9,7 +9,7 @@ from repomedic.analyzers.base import BaseAnalyzer
 from repomedic.core.context import ScanContext
 from repomedic.models import AnalyzerResult, Category, Finding, Severity
 from repomedic.utils.fs import read_text_capped
-from repomedic.utils.process import run
+from repomedic.utils.vcs import run_git
 
 MERGE_CONFLICT_RE = re.compile(r"^<{7}\s", re.MULTILINE)
 
@@ -34,7 +34,7 @@ class GitAnalyzer(BaseAnalyzer):
         return AnalyzerResult(analyzer=self.name, findings=findings)
 
     def _check_status(self, cwd: str) -> list[Finding]:
-        result = run(["git", "status", "--porcelain"], cwd=cwd, timeout=15)
+        result = run_git(["status", "--porcelain"], cwd=cwd, timeout=15)
         if not result.ok:
             return []
 
@@ -98,7 +98,7 @@ class GitAnalyzer(BaseAnalyzer):
         return findings
 
     def _check_head(self, cwd: str) -> list[Finding]:
-        result = run(["git", "symbolic-ref", "HEAD"], cwd=cwd, timeout=10)
+        result = run_git(["symbolic-ref", "HEAD"], cwd=cwd, timeout=10)
         if result.ran and result.returncode != 0:
             return [
                 Finding(

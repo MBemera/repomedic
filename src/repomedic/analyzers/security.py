@@ -10,7 +10,8 @@ from repomedic.analyzers.base import BaseAnalyzer
 from repomedic.core.context import ScanContext
 from repomedic.models import AnalyzerResult, Category, Finding, Severity
 from repomedic.utils.fs import read_text_capped
-from repomedic.utils.process import JSON_REPORT_PLACEHOLDER, run, run_json_tool
+from repomedic.utils.process import JSON_REPORT_PLACEHOLDER, run_json_tool
+from repomedic.utils.vcs import run_git
 
 # Patterns for hardcoded secrets (name, regex)
 _SECRET_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
@@ -137,7 +138,7 @@ class SecurityAnalyzer(BaseAnalyzer):
         # Check if .env is gitignored — prefer git check-ignore for accuracy
         env_ignored = False
         if ctx.has_git:
-            result = run(["git", "check-ignore", "-q", ".env"], cwd=str(ctx.target), timeout=5)
+            result = run_git(["check-ignore", "-q", ".env"], cwd=str(ctx.target), timeout=5)
             env_ignored = result.ok
         if not env_ignored:
             gitignore = ctx.target / ".gitignore"

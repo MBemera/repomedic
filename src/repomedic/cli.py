@@ -271,7 +271,9 @@ def run(
     analyzer = RuntimeAnalyzer()
     result = analyzer.analyze_script(str(script_path), cwd=str(script_path.parent), args=args or [])
 
-    report = ScanReport(target=str(script_path), results=[result])
+    # Target is the script's directory so snippet rendering (which refuses to
+    # read outside the target root) still covers the script and its siblings.
+    report = ScanReport(target=str(script_path.parent), results=[result])
     report.build_summary()
 
     if output == "rich":

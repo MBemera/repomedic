@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 # Default per-file read budget for analyzers that load whole files.
@@ -73,7 +74,13 @@ def discover_files(
     skip_tests: bool = True,
     extra_ignore_dirs: set[str] | None = None,
 ) -> list[Path]:
-    """Walk *root* and return files, skipping ignored directories and optionally test files."""
+    """Walk *root* and return files, skipping ignored directories and optionally test files.
+
+    The walk never follows directory symlinks, and file symlinks are kept
+    only when they resolve inside *root* — a link pointing outside the scan
+    root (e.g. at ``~/.aws/credentials``) must never be read into findings
+    or snippets. Ignored directories are pruned before descent.
+    """
     ignored = ignore_dirs if ignore_dirs is not None else _get_ignore_dirs(skip_tests)
     if extra_ignore_dirs:
         ignored = ignored | extra_ignore_dirs
@@ -82,15 +89,27 @@ def discover_files(
     if not root.is_dir():
         return results
 
-    for item in sorted(root.rglob("*")):
-        # Only check parts relative to root, so explicit paths inside ignored dirs work
-        rel_parts = item.relative_to(root).parts
-        if any(part in ignored for part in rel_parts):
-            continue
-        if item.is_file():
-            if skip_tests and _is_test_file(item.name):
+    root_resolved = root.resolve()
+
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+        dirnames[:] = sorted(d for d in dirnames if d not in ignored)
+        for name in sorted(filenames):
+            if skip_tests and _is_test_file(name):
                 continue
-            if extensions is None or item.suffix in extensions:
-                results.append(item)
+            path = Path(dirpath) / name
+            if extensions is not None and path.suffix not in extensions:
+                continue
+            if path.is_symlink():
+                try:
+                    resolved = path.resolve(strict=True)
+                except OSError:
+                    continue  # broken link — hygiene flags these separately
+                if not resolved.is_relative_to(root_resolved):
+                    continue  # escapes the scan root
+                if not resolved.is_file():
+                    continue
+            elif not path.is_file():
+                continue  # sockets, fifos, ...
+            results.append(path)
 
     return results

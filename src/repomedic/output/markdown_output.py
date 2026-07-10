@@ -184,6 +184,11 @@ def _snippet_for(finding: Finding, target_root: Path) -> str | None:
         return None
     path = target_root / finding.file_path
     try:
+        # Never render content from outside the scan root — a finding path
+        # or symlink must not be able to pull foreign files into the report.
+        resolved = path.resolve(strict=False)
+        if not resolved.is_relative_to(target_root.resolve()):
+            return None
         if not path.is_file() or path.stat().st_size > 2 * 1024 * 1024:
             return None
         file_lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
