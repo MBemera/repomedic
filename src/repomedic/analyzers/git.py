@@ -8,6 +8,7 @@ from repomedic.analyzers import register
 from repomedic.analyzers.base import BaseAnalyzer
 from repomedic.core.context import ScanContext
 from repomedic.models import AnalyzerResult, Category, Finding, Severity
+from repomedic.utils.fs import read_text_capped
 from repomedic.utils.process import run
 
 MERGE_CONFLICT_RE = re.compile(r"^<{7}\s", re.MULTILINE)
@@ -78,15 +79,11 @@ class GitAnalyzer(BaseAnalyzer):
         for fpath in ctx.files:
             if fpath.suffix in (".pyc", ".pyo", ".so", ".dll", ".exe", ".bin"):
                 continue
-            try:
-                content = fpath.read_text(encoding="utf-8", errors="replace")
-            except Exception:
+            content = read_text_capped(fpath)
+            if content is None:
                 continue
             if MERGE_CONFLICT_RE.search(content):
-                try:
-                    rel = str(fpath.relative_to(ctx.target))
-                except ValueError:
-                    rel = str(fpath)
+                rel = self._rel(fpath, ctx)
                 findings.append(
                     Finding(
                         category=Category.git_health,

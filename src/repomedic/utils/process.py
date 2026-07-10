@@ -17,17 +17,24 @@ enforces three safety properties:
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import signal
 import subprocess
 import sys
+import tempfile
 import threading
 from dataclasses import dataclass
 from enum import Enum
-from typing import IO, Literal
+from pathlib import Path
+from typing import IO, Any, Literal
 
 logger = logging.getLogger("repomedic")
+
+# Placeholder in a run_json_tool command that is replaced with a temporary
+# report path the tool writes its JSON to (for tools without stdout JSON).
+JSON_REPORT_PLACEHOLDER = "{json_report}"
 
 # Environment variables allowed through to child processes in isolated mode.
 # Everything needed for toolchains to function; nothing that carries secrets.
@@ -197,3 +204,49 @@ def run(
         stderr=stderr,
         truncated=state["truncated"],
     )
+
+
+def run_json_tool(
+    cmd: list[str],
+    *,
+    cwd: str | None = None,
+    timeout: int = 30,
+) -> tuple[Any | None, ProcessResult]:
+    """Run a tool that emits JSON and parse it.
+
+    JSON is read from stdout, or — when *cmd* contains
+    :data:`JSON_REPORT_PLACEHOLDER` — from a temporary report file whose
+    path is substituted for the placeholder and removed afterwards.
+
+    Returns ``(data, result)``; ``data`` is ``None`` when the tool did not
+    run or produced no valid JSON, and ``result`` carries the status so
+    callers can distinguish "tool missing" from "no output".
+    """
+    report_path: str | None = None
+    if JSON_REPORT_PLACEHOLDER in cmd:
+        fd, report_path = tempfile.mkstemp(suffix=".json", prefix="repomedic_")
+        os.close(fd)
+        cmd = [report_path if part == JSON_REPORT_PLACEHOLDER else part for part in cmd]
+
+    try:
+        result = run(cmd, cwd=cwd, timeout=timeout)
+        if not result.ran:
+            return None, result
+
+        if report_path is not None:
+            try:
+                raw = Path(report_path).read_text(encoding="utf-8")
+            except OSError:
+                return None, result
+        else:
+            raw = result.stdout
+
+        if not raw.strip():
+            return None, result
+        try:
+            return json.loads(raw), result
+        except json.JSONDecodeError:
+            return None, result
+    finally:
+        if report_path is not None:
+            Path(report_path).unlink(missing_ok=True)

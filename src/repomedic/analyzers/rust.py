@@ -9,7 +9,7 @@ from repomedic.analyzers import register
 from repomedic.analyzers.base import BaseAnalyzer
 from repomedic.core.context import ScanContext
 from repomedic.models import AnalyzerResult, Category, Finding, Severity
-from repomedic.utils.process import run
+from repomedic.utils.process import run, run_json_tool
 
 
 @register
@@ -194,19 +194,13 @@ class RustAnalyzer(BaseAnalyzer):
         if not ctx.has_cargo_toml:
             return []
 
-        result = run(
+        data, _result = run_json_tool(
             ["cargo", "audit", "--json"],
             cwd=str(ctx.target),
             timeout=120,
         )
-
-        if not result.ran:
-            return []  # cargo-audit not installed
-
-        try:
-            data = json.loads(result.stdout) if result.stdout.strip() else {}
-        except json.JSONDecodeError:
-            return []
+        if not isinstance(data, dict):
+            return []  # cargo-audit not installed or no JSON
 
         findings = []
         vulns = data.get("vulnerabilities", {}).get("list", [])

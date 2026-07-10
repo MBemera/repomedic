@@ -62,10 +62,7 @@ class GoAnalyzer(BaseAnalyzer):
             match = re.match(r"(.+\.go):(\d+):(\d+):\s+(.+)", line)
             if match:
                 filepath, line_no, col, message = match.groups()
-                try:
-                    rel = str(Path(filepath).relative_to(ctx.target))
-                except ValueError:
-                    rel = filepath
+                rel = self._rel(Path(filepath), ctx)
 
                 findings.append(
                     Finding(
@@ -119,10 +116,7 @@ class GoAnalyzer(BaseAnalyzer):
             match = re.match(r"(.+\.go):(\d+):(\d+):\s+(.+)", line)
             if match:
                 filepath, line_no, col, message = match.groups()
-                try:
-                    rel = str(Path(filepath).relative_to(ctx.target))
-                except ValueError:
-                    rel = filepath
+                rel = self._rel(Path(filepath), ctx)
 
                 findings.append(
                     Finding(
@@ -242,11 +236,8 @@ class GoAnalyzer(BaseAnalyzer):
                 filepath = pos.get("filename", "")
                 line_no = pos.get("line")
                 
-                try:
-                    rel_path = str(Path(filepath).relative_to(ctx.target))
-                except ValueError:
-                    rel_path = filepath
-                
+                rel_path = self._rel(Path(filepath), ctx)
+
                 aliases = ", ".join(osv_info.get("aliases", []))
                 
                 findings.append(

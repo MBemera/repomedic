@@ -4,6 +4,23 @@ from __future__ import annotations
 
 from pathlib import Path
 
+# Default per-file read budget for analyzers that load whole files.
+MAX_READ_BYTES = 1_048_576  # 1 MiB
+
+
+def read_text_capped(path: Path, max_bytes: int = MAX_READ_BYTES) -> str | None:
+    """Read a text file, or return None when oversized or unreadable.
+
+    Analyzers use this instead of bare ``read_text()`` so a single huge
+    (or unreadable) file can neither exhaust memory nor crash a check.
+    """
+    try:
+        if path.stat().st_size > max_bytes:
+            return None
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+
 IGNORE_DIRS = {
     ".git",
     "__pycache__",

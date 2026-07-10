@@ -1,4 +1,4 @@
-"""Base analyzer ABC."""
+"""Base analyzer ABC and shared tool-output helpers."""
 
 from __future__ import annotations
 
@@ -6,7 +6,33 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 
 from repomedic.core.context import ScanContext
-from repomedic.models import AnalyzerResult
+from repomedic.models import AnalyzerResult, Severity
+
+# One place mapping each external tool's severity vocabulary onto ours.
+# Keys are lowercased; ESLint reports numeric severities (2=error, 1=warn).
+TOOL_SEVERITY: dict[str, dict[str, Severity]] = {
+    "bandit": {"high": Severity.error, "medium": Severity.warning, "low": Severity.info},
+    "semgrep": {"error": Severity.error, "warning": Severity.warning, "info": Severity.info},
+    "eslint": {"2": Severity.error, "1": Severity.warning},
+    "npm_audit": {
+        "critical": Severity.error,
+        "high": Severity.error,
+        "moderate": Severity.warning,
+        "low": Severity.info,
+        "info": Severity.info,
+    },
+    "shellcheck": {
+        "error": Severity.error,
+        "warning": Severity.warning,
+        "info": Severity.info,
+        "style": Severity.info,
+    },
+}
+
+
+def map_severity(tool: str, raw: str | int | None, default: Severity = Severity.warning) -> Severity:
+    """Map a tool's own severity label onto repomedic's Severity."""
+    return TOOL_SEVERITY.get(tool, {}).get(str(raw).strip().lower(), default)
 
 
 class BaseAnalyzer(ABC):

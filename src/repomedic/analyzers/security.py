@@ -9,6 +9,8 @@ from repomedic.analyzers import register
 from repomedic.analyzers.base import BaseAnalyzer
 from repomedic.core.context import ScanContext
 from repomedic.models import AnalyzerResult, Category, Finding, Severity
+from repomedic.utils.fs import read_text_capped
+from repomedic.utils.process import JSON_REPORT_PLACEHOLDER, run, run_json_tool
 
 # Patterns for hardcoded secrets (name, regex)
 _SECRET_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
@@ -46,73 +48,56 @@ class SecurityAnalyzer(BaseAnalyzer):
         return AnalyzerResult(analyzer=self.name, findings=findings)
 
     def _check_hardcoded_secrets(self, ctx: ScanContext) -> list[Finding]:
-        import json
-        import tempfile
-        from repomedic.utils.process import run
-
         # Try gitleaks first
-        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tmp:
-            report_path = tmp.name
-
-        # gitleaks detect --no-git --report-format json --report-path <file> --source <dir>
-        result = run(
-            ["gitleaks", "detect", "--no-git", "--report-format", "json", "--report-path", report_path, "--source", str(ctx.target)],
+        leaks, result = run_json_tool(
+            [
+                "gitleaks", "detect", "--no-git",
+                "--report-format", "json",
+                "--report-path", JSON_REPORT_PLACEHOLDER,
+                "--source", str(ctx.target),
+            ],
             cwd=str(ctx.target),
             timeout=120,
         )
 
+        if not result.ran:
+            # Fallback to regex if gitleaks is not installed
+            return self._check_secrets_regex(ctx)
+
         findings: list[Finding] = []
-        if result.ran:  # gitleaks is installed
-            try:
-                with open(report_path, encoding="utf-8") as f:
-                    leaks = json.load(f)
-                for leak in leaks:
-                    try:
-                        rel = str(Path(leak["File"]).relative_to(ctx.target))
-                    except ValueError:
-                        rel = str(leak.get("File", ""))
-                    
-                    findings.append(
-                        Finding(
-                            category=Category.security,
-                            severity=Severity.error,
-                            code="SEC-001",
-                            title=f"Hardcoded secret: {leak.get('RuleID', 'Unknown')}",
-                            description=f"Gitleaks detected {leak.get('Description', 'a secret')}.",
-                            file_path=rel,
-                            line=leak.get("StartLine"),
-                            suggestion="Move this secret to a .env file and load it via environment variables. Never commit secrets to version control.",
-                            metadata={"gitleaks_rule": leak.get("RuleID"), "match": leak.get("Match")},
-                        )
-                    )
-            except (json.JSONDecodeError, FileNotFoundError, KeyError):
-                pass
-            finally:
-                Path(report_path).unlink(missing_ok=True)
+        for leak in leaks if isinstance(leaks, list) else []:
+            findings.append(
+                Finding(
+                    category=Category.security,
+                    severity=Severity.error,
+                    code="SEC-001",
+                    title=f"Hardcoded secret: {leak.get('RuleID', 'Unknown')}",
+                    description=f"Gitleaks detected {leak.get('Description', 'a secret')}.",
+                    file_path=self._rel(Path(leak.get("File", "")), ctx),
+                    line=leak.get("StartLine"),
+                    suggestion="Move this secret to a .env file and load it via environment variables. Never commit secrets to version control.",
+                    metadata={"gitleaks_rule": leak.get("RuleID"), "match": leak.get("Match")},
+                )
+            )
 
-            # Also run regex fallback to catch patterns gitleaks might miss
-            findings.extend(self._check_secrets_regex(ctx))
-            # Deduplicate by file_path + line
-            seen: set[tuple[str | None, int | None]] = set()
-            deduped: list[Finding] = []
-            for finding in findings:
-                key = (finding.file_path, finding.line)
-                if key not in seen:
-                    seen.add(key)
-                    deduped.append(finding)
-            return deduped
-
-        # Fallback to regex if gitleaks is not installed
-        Path(report_path).unlink(missing_ok=True)
-        return self._check_secrets_regex(ctx)
+        # Also run regex fallback to catch patterns gitleaks might miss
+        findings.extend(self._check_secrets_regex(ctx))
+        # Deduplicate by file_path + line
+        seen: set[tuple[str | None, int | None]] = set()
+        deduped: list[Finding] = []
+        for finding in findings:
+            key = (finding.file_path, finding.line)
+            if key not in seen:
+                seen.add(key)
+                deduped.append(finding)
+        return deduped
 
     def _check_secrets_regex(self, ctx: ScanContext) -> list[Finding]:
         findings = []
         code_files = [f for f in ctx.files if f.suffix in _CODE_EXTENSIONS]
         for filepath in code_files:
-            try:
-                content = filepath.read_text(encoding="utf-8", errors="replace")
-            except OSError:
+            content = read_text_capped(filepath)
+            if content is None:
                 continue
             for line_no, line in enumerate(content.splitlines(), 1):
                 stripped = line.strip()
@@ -127,10 +112,7 @@ class SecurityAnalyzer(BaseAnalyzer):
                             matched_value.lower().startswith(p) for p in _SAFE_PREFIXES
                         ):
                             continue
-                        try:
-                            rel = str(filepath.relative_to(ctx.target))
-                        except ValueError:
-                            rel = str(filepath)
+                        rel = self._rel(filepath, ctx)
                         findings.append(
                             Finding(
                                 category=Category.security,
@@ -153,7 +135,6 @@ class SecurityAnalyzer(BaseAnalyzer):
             return findings
 
         # Check if .env is gitignored — prefer git check-ignore for accuracy
-        from repomedic.utils.process import run
         env_ignored = False
         if ctx.has_git:
             result = run(["git", "check-ignore", "-q", ".env"], cwd=str(ctx.target), timeout=5)
@@ -191,16 +172,12 @@ class SecurityAnalyzer(BaseAnalyzer):
         findings = []
         debug_pattern = re.compile(r"""^\s*DEBUG\s*=\s*True\b""")
         for py_file in ctx.python_files:
-            try:
-                content = py_file.read_text(encoding="utf-8", errors="replace")
-            except OSError:
+            content = read_text_capped(py_file)
+            if content is None:
                 continue
             for line_no, line in enumerate(content.splitlines(), 1):
                 if debug_pattern.match(line):
-                    try:
-                        rel = str(py_file.relative_to(ctx.target))
-                    except ValueError:
-                        rel = str(py_file)
+                    rel = self._rel(py_file, ctx)
                     findings.append(
                         Finding(
                             category=Category.security,

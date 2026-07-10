@@ -13,15 +13,15 @@ def test_semgrep_not_installed_is_silent(make_project):
     """A missing optional tool must not pollute every report with findings."""
     project = make_project({"app.py": "print('hi')\n"})
 
-    def fake_run(cmd, **kwargs):
-        return ProcessResult(
+    def fake_run_json_tool(cmd, **kwargs):
+        return None, ProcessResult(
             status=ProcessStatus.not_found,
             returncode=None,
             stdout="",
             stderr="Command not found: semgrep",
         )
 
-    with patch("repomedic.analyzers.semgrep.run", side_effect=fake_run):
+    with patch("repomedic.analyzers.semgrep.run_json_tool", side_effect=fake_run_json_tool):
         ctx = ScanContext(str(project))
         analyzer = SemgrepAnalyzer()
         result = analyzer.analyze(ctx)

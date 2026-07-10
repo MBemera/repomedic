@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from repomedic.analyzers import register
-from repomedic.analyzers.base import BaseAnalyzer
+from repomedic.analyzers.base import BaseAnalyzer, map_severity
 from repomedic.core.context import ScanContext
 from repomedic.models import AnalyzerResult, Category, Finding, Severity
-from repomedic.utils.process import run
+from repomedic.utils.process import run, run_json_tool
 
 
 @register
@@ -67,25 +66,13 @@ class ShellAnalyzer(BaseAnalyzer):
         if not scripts:
             return []
 
-        result = run(
+        issues, _result = run_json_tool(
             ["shellcheck", "--format", "json", *scripts],
             cwd=str(ctx.target),
             timeout=60,
         )
-        if not result.ran:
-            return []  # shellcheck not installed
-
-        try:
-            issues = json.loads(result.stdout) if result.stdout.strip() else []
-        except json.JSONDecodeError:
-            return []
-
-        severity_map = {
-            "error": Severity.error,
-            "warning": Severity.warning,
-            "info": Severity.info,
-            "style": Severity.info,
-        }
+        if not isinstance(issues, list):
+            return []  # shellcheck not installed or no JSON
 
         findings = []
         for issue in issues:
@@ -93,7 +80,7 @@ class ShellAnalyzer(BaseAnalyzer):
             findings.append(
                 Finding(
                     category=Category.static_analysis,
-                    severity=severity_map.get(issue.get("level", "warning"), Severity.warning),
+                    severity=map_severity("shellcheck", issue.get("level", "warning")),
                     code=f"SH-SC{sc_code}",
                     title=f"ShellCheck SC{sc_code}",
                     description=issue.get("message", ""),

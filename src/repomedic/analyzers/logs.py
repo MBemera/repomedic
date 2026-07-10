@@ -10,6 +10,7 @@ from repomedic.analyzers import register
 from repomedic.analyzers.base import BaseAnalyzer
 from repomedic.core.context import ScanContext
 from repomedic.models import AnalyzerResult, Category, Finding, Severity
+from repomedic.utils.fs import read_text_capped
 
 LOG_LEVEL_RE = re.compile(
     r"\b(ERROR|CRITICAL|FATAL|WARNING|WARN|INFO|DEBUG)\b", re.IGNORECASE
@@ -34,9 +35,8 @@ class LogAnalyzer(BaseAnalyzer):
         return AnalyzerResult(analyzer=self.name, findings=findings)
 
     def _analyze_log(self, path: Path, ctx: ScanContext) -> list[Finding]:
-        try:
-            content = path.read_text(encoding="utf-8", errors="replace")
-        except Exception:
+        content = read_text_capped(path, max_bytes=4 * 1024 * 1024)
+        if content is None:
             return []
 
         rel = self._rel(path, ctx)
