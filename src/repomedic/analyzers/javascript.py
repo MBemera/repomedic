@@ -181,7 +181,7 @@ class JavaScriptAnalyzer(BaseAnalyzer):
 
     def _check_dependencies(self, ctx: ScanContext) -> list[Finding]:
         """Check if package.json dependencies are installed."""
-        findings = []
+        findings: list[Finding] = []
         pkg_json = ctx.target / "package.json"
         if not pkg_json.is_file():
             return findings

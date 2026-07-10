@@ -61,7 +61,7 @@ class SecurityAnalyzer(BaseAnalyzer):
             timeout=120,
         )
 
-        findings = []
+        findings: list[Finding] = []
         if result.returncode >= 0:  # gitleaks is installed
             try:
                 with open(report_path, encoding="utf-8") as f:
@@ -93,13 +93,13 @@ class SecurityAnalyzer(BaseAnalyzer):
             # Also run regex fallback to catch patterns gitleaks might miss
             findings.extend(self._check_secrets_regex(ctx))
             # Deduplicate by file_path + line
-            seen = set()
-            deduped = []
-            for f in findings:
-                key = (f.file_path, f.line)
+            seen: set[tuple[str | None, int | None]] = set()
+            deduped: list[Finding] = []
+            for finding in findings:
+                key = (finding.file_path, finding.line)
                 if key not in seen:
                     seen.add(key)
-                    deduped.append(f)
+                    deduped.append(finding)
             return deduped
 
         # Fallback to regex if gitleaks is not installed
@@ -147,7 +147,7 @@ class SecurityAnalyzer(BaseAnalyzer):
         return findings
 
     def _check_env_tracked(self, ctx: ScanContext) -> list[Finding]:
-        findings = []
+        findings: list[Finding] = []
         env_file = ctx.target / ".env"
         if not env_file.is_file():
             return findings

@@ -18,6 +18,7 @@ dependencies = [
 dev = [
     "pytest>=7.0",
     "ruff>=0.4",
+    "mypy>=1.10",
 ]
 # Optional analysis tools that unlock deeper findings
 tools = [
@@ -37,3 +38,8 @@ testpaths = ["tests"]
 [tool.ruff]
 target-version = "py311"
 extend-exclude = ["tests/fixtures"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+check_untyped_defs = true
