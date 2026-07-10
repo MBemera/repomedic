@@ -28,7 +28,7 @@ repomedic sniff <path>
 ~~~markdown
 ---
 tool: repomedic
-schema: 2
+schema: 3
 generated: 2026-07-07T12:00:00+00:00
 target: "/path/to/project"
 health: 62/100 (D)
@@ -74,8 +74,11 @@ What to rely on:
   findings have their snippet withheld and values masked.
 - **Findings are grouped by file**, files with errors first, project-level
   findings last. Fix one file at a time.
-- **`RM-xxxxxxxx` fingerprints are stable across runs** for unchanged
-  findings — use them to track what you fixed and to diff scans.
+- **`RM-…` fingerprints are stable across runs** — they hash the flagged
+  line's *content*, not its line number, so editing elsewhere in the file
+  (inserting/deleting lines above) does not change a finding's ID. Use them
+  to track what you fixed and to diff scans. Fixing the flagged line itself
+  retires its ID, which is the signal you want.
 - **Snippets** show the offending lines (`>` marks the finding line), so you
   usually don't need to open the file to understand the problem.
 - **"Verify after fixing"** lists exact commands to confirm your fixes,
@@ -132,7 +135,7 @@ repomedic sniff . --changed --fail-on error
 ## JSON mode
 
 `repomedic <path> --output json` prints a single JSON document to stdout
-(schema_version 2): summary counts, health score, per-analyzer findings with
+(schema_version 3): summary counts, health score, per-analyzer findings with
 fingerprints, detected languages, timings. Use it when you want to post-process
 findings programmatically instead of reading markdown.
 

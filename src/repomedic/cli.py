@@ -19,6 +19,7 @@ from rich.panel import Panel
 from typer.core import TyperGroup
 
 from repomedic.analyzers import get_all_analyzers
+from repomedic.core.fingerprint import assign_fingerprints
 from repomedic.core.service import (
     ScanOutcome,
     ScanRequest,
@@ -279,6 +280,7 @@ def run(
 
     # Target is the script's directory so snippet rendering (which refuses to
     # read outside the target root) still covers the script and its siblings.
+    assign_fingerprints([result], script_path.parent)
     report = ScanReport(target=str(script_path.parent), results=[result])
     report.build_summary()
 

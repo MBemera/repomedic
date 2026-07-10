@@ -50,7 +50,7 @@ def test_front_matter_fields(tmp_path):
 
     assert content.startswith("---\n")
     assert "tool: repomedic" in content
-    assert "schema: 2" in content
+    assert "schema: 3" in content
     assert "errors: 1" in content
     assert "shown: 1" in content
     assert 'target: "/tmp/test-project"' in content  # values are JSON-quoted scalars

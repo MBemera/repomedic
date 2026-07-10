@@ -14,6 +14,7 @@ from pathlib import PurePosixPath
 from repomedic.analyzers import get_all_analyzers
 from repomedic.analyzers.base import BaseAnalyzer
 from repomedic.core.context import ScanContext
+from repomedic.core.fingerprint import assign_fingerprints
 from repomedic.models import SEVERITY_ORDER, AnalyzerResult, Finding, ScanReport
 
 MAX_PARALLEL_ANALYZERS = 4
@@ -84,6 +85,10 @@ class Scanner:
         else:
             results = [_run_analyzer(a, ctx) for a in applicable]
         report.results = results
+
+        # Before any filtering/truncation: fingerprints (incl. occurrence
+        # indices) are a property of the repo state, not of scan flags.
+        assign_fingerprints(results, ctx.target)
 
         if only_files is not None:
             _filter_to_files(report, only_files)

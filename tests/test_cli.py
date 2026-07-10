@@ -34,7 +34,7 @@ def clean_project(make_project):
 def test_scan_json_stdout_is_pure_json(broken_project):
     result = runner.invoke(app, [str(broken_project), "--output", "json"])
     data = json.loads(result.stdout)  # raises if any non-JSON noise leaked
-    assert data["schema_version"] == 2
+    assert data["schema_version"] == 3
     assert data["summary"]["errors"] >= 1
     assert "python" in data["languages"]
 

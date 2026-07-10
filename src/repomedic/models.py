@@ -6,9 +6,30 @@ import hashlib
 from datetime import datetime, timezone
 from enum import Enum
 
-from pydantic import BaseModel, Field, computed_field
+from pydantic import BaseModel, Field, model_validator
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
+
+FINGERPRINT_ALGO_VERSION = 2
+
+
+def compute_fingerprint(code: str, file_path: str | None, content: str, occurrence: int) -> str:
+    """Stable finding ID: hash of what the finding IS, not where its line sits.
+
+    v2 hashes the flagged line's normalized *content* plus an occurrence
+    index instead of the line number, so inserting or deleting lines above
+    a finding no longer changes its ID (the v1 failure mode that broke
+    cross-run tracking). Editing the flagged line itself changes the ID,
+    which is correct — it is a different finding. The algorithm version is
+    part of the hash input so a future v3 can never collide with v2.
+    """
+    raw = f"{FINGERPRINT_ALGO_VERSION}|{code}|{file_path or ''}|{content}|{occurrence}"
+    return "RM-" + hashlib.sha1(raw.encode("utf-8")).hexdigest()[:10]
+
+
+def normalize_line(text: str) -> str:
+    """Whitespace-collapse and cap a source line for fingerprint hashing."""
+    return " ".join(text.split())[:200]
 
 
 class Severity(str, Enum):
@@ -51,13 +72,20 @@ class Finding(BaseModel):
         description="Programming language this finding relates to (per the language registry), or None for language-agnostic",
     )
     metadata: dict = Field(default_factory=dict)
+    fingerprint: str = Field(
+        default="",
+        description="Stable ID (RM-…) for referencing/deduplicating this finding across runs",
+    )
 
-    @computed_field  # type: ignore[prop-decorator]
-    @property
-    def fingerprint(self) -> str:
-        """Stable short ID for referencing/deduplicating this finding across runs."""
-        raw = f"{self.code}|{self.file_path or ''}|{self.line or 0}|{self.title}|{self.description[:80]}"
-        return "RM-" + hashlib.sha1(raw.encode("utf-8")).hexdigest()[:8]
+    @model_validator(mode="after")
+    def _default_fingerprint(self) -> Finding:
+        # The scanner assigns content-aware fingerprints in one pass
+        # (core/fingerprint.py). This fallback keeps directly-constructed
+        # findings identifiable with the same algorithm.
+        if not self.fingerprint:
+            content = normalize_line(f"{self.title}|{self.description[:80]}")
+            self.fingerprint = compute_fingerprint(self.code, self.file_path, content, 0)
+        return self
 
 
 class AnalyzerResult(BaseModel):
