@@ -45,10 +45,10 @@ class GoAnalyzer(BaseAnalyzer):
             timeout=60,
         )
 
-        if result.returncode < 0:
+        if not result.ran:
             return []  # go not installed
 
-        if result.returncode == 0:
+        if result.ok:
             return []
 
         findings = []
@@ -82,7 +82,7 @@ class GoAnalyzer(BaseAnalyzer):
                     )
                 )
 
-        if not findings and result.returncode != 0:
+        if not findings and not result.ok:
             findings.append(
                 Finding(
                     category=Category.static_analysis,
@@ -106,7 +106,7 @@ class GoAnalyzer(BaseAnalyzer):
             timeout=60,
         )
 
-        if result.returncode < 0 or result.returncode == 0:
+        if not result.ran or result.ok:
             return []
 
         findings = []
@@ -181,10 +181,10 @@ class GoAnalyzer(BaseAnalyzer):
             timeout=30,
         )
 
-        if result.returncode < 0:
+        if not result.ran:
             return findings
 
-        if result.returncode != 0:
+        if not result.ok:
             findings.append(
                 Finding(
                     category=Category.dependency,
@@ -211,7 +211,7 @@ class GoAnalyzer(BaseAnalyzer):
             timeout=120,
         )
 
-        if result.returncode < 0:
+        if not result.ran:
             return []  # govulncheck not installed
 
         findings = []

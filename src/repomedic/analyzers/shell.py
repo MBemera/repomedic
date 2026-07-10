@@ -33,7 +33,7 @@ class ShellAnalyzer(BaseAnalyzer):
             if script.suffix == ".zsh":
                 continue  # bash -n would false-positive on zsh-specific syntax
             result = run(["bash", "-n", str(script)], cwd=str(ctx.target), timeout=10)
-            if result.returncode <= 0:
+            if not result.ran or result.ok:
                 continue  # clean, or bash unavailable
             message = result.stderr.strip().splitlines()[-1] if result.stderr.strip() else "Syntax error"
             line_no = None
@@ -72,7 +72,7 @@ class ShellAnalyzer(BaseAnalyzer):
             cwd=str(ctx.target),
             timeout=60,
         )
-        if result.returncode < 0:
+        if not result.ran:
             return []  # shellcheck not installed
 
         try:

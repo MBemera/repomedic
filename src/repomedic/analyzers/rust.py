@@ -50,7 +50,7 @@ class RustAnalyzer(BaseAnalyzer):
             timeout=120,
         )
 
-        if result.returncode < 0:
+        if not result.ran:
             return []  # cargo not installed
 
         return self._parse_cargo_json(ctx, result.stdout, is_clippy=False)
@@ -66,7 +66,7 @@ class RustAnalyzer(BaseAnalyzer):
             timeout=120,
         )
 
-        if result.returncode < 0:
+        if not result.ran:
             return []
 
         return self._parse_cargo_json(ctx, result.stdout, is_clippy=True)
@@ -200,7 +200,7 @@ class RustAnalyzer(BaseAnalyzer):
             timeout=120,
         )
 
-        if result.returncode < 0:
+        if not result.ran:
             return []  # cargo-audit not installed
 
         try:

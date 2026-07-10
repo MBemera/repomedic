@@ -21,14 +21,14 @@ def changed_files(target: Path, since: str | None = None) -> set[str] | None:
 
     if since:
         diff = run(["git", "diff", "--name-only", since], cwd=str(target), timeout=15)
-        if diff.returncode != 0:
+        if not diff.ok:
             return None
         paths.update(ln.strip() for ln in diff.stdout.splitlines() if ln.strip())
 
     # -uall lists files inside untracked directories individually (instead of
     # collapsing to "dir/"), which finding paths need for exact matching.
     status = run(["git", "status", "--porcelain", "-uall"], cwd=str(target), timeout=15)
-    if status.returncode != 0:
+    if not status.ok:
         return None
     for line in status.stdout.splitlines():
         if len(line) < 4:

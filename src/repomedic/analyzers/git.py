@@ -34,7 +34,7 @@ class GitAnalyzer(BaseAnalyzer):
 
     def _check_status(self, cwd: str) -> list[Finding]:
         result = run(["git", "status", "--porcelain"], cwd=cwd)
-        if result.returncode != 0:
+        if not result.ok:
             return []
 
         findings = []
@@ -102,7 +102,7 @@ class GitAnalyzer(BaseAnalyzer):
 
     def _check_head(self, cwd: str) -> list[Finding]:
         result = run(["git", "symbolic-ref", "HEAD"], cwd=cwd)
-        if result.returncode != 0:
+        if result.ran and result.returncode != 0:
             return [
                 Finding(
                     category=Category.git_health,

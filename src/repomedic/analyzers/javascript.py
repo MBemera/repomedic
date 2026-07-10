@@ -52,7 +52,7 @@ class JavaScriptAnalyzer(BaseAnalyzer):
                 cwd=str(ctx.target),
                 timeout=10,
             )
-            if result.returncode != 0 and result.stderr:
+            if result.ran and not result.ok and result.stderr:
                 # Parse the error message
                 error_msg = result.stderr.strip()
                 line_num = None
@@ -97,7 +97,7 @@ class JavaScriptAnalyzer(BaseAnalyzer):
             timeout=60,
         )
 
-        if result.returncode < 0:
+        if not result.ran:
             return []  # eslint not available
 
         try:
@@ -143,7 +143,7 @@ class JavaScriptAnalyzer(BaseAnalyzer):
             timeout=60,
         )
 
-        if result.returncode < 0 or result.returncode == 0:
+        if not result.ran or result.ok:
             return []  # not available or no errors
 
         findings = []
@@ -242,7 +242,7 @@ class JavaScriptAnalyzer(BaseAnalyzer):
             timeout=60,
         )
 
-        if result.returncode < 0:
+        if not result.ran:
             return []  # npm not installed
 
         try:

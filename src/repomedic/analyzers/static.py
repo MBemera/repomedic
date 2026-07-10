@@ -67,7 +67,7 @@ class StaticAnalyzer(BaseAnalyzer):
             timeout=30,
         )
 
-        if result.returncode < 0:
+        if not result.ran:
             return []  # ruff not installed or timed out
 
         try:
@@ -122,7 +122,7 @@ class StaticAnalyzer(BaseAnalyzer):
             timeout=60,
         )
 
-        if result.returncode < 0:
+        if not result.ran:
             Path(report_path).unlink(missing_ok=True)
             return []  # bandit not installed or timed out
 

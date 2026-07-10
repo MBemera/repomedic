@@ -37,7 +37,7 @@ class SemgrepAnalyzer(BaseAnalyzer):
             timeout=300, # Semgrep can take a while on large repos
         )
 
-        if result.returncode < 0:
+        if not result.ran:
             # Semgrep not installed — skip quietly; `repomedic doctor` surfaces
             # optional tools, and a per-scan info finding is just noise for agents.
             Path(report_path).unlink(missing_ok=True)

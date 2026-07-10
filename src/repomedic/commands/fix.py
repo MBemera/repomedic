@@ -92,7 +92,7 @@ def _fix_ruff(target: Path, dry_run: bool = False) -> tuple[str, str, str]:
     """Run ruff check --fix (or --diff in dry-run mode)."""
     if dry_run:
         result = run(["ruff", "check", "--diff", str(target)], cwd=str(target), timeout=30)
-        if result.returncode < 0:
+        if not result.ran:
             return ("Ruff auto-fix", "Auto-fix lint issues with ruff", "SKIPPED")
         if result.stdout.strip():
             n_hunks = result.stdout.count("--- ")
@@ -100,14 +100,14 @@ def _fix_ruff(target: Path, dry_run: bool = False) -> tuple[str, str, str]:
         return ("Ruff auto-fix", "No fixable lint issues found", "SKIPPED")
 
     result = run(["ruff", "check", "--fix", str(target)], cwd=str(target), timeout=30)
-    if result.returncode < 0:
+    if not result.ran:
         return ("Ruff auto-fix", "Auto-fix lint issues with ruff", "SKIPPED")
 
     # Check if ruff made changes
     if "Fixed" in result.stdout or "fixed" in result.stdout:
         return ("Ruff auto-fix", f"Applied ruff fixes: {result.stdout.strip().splitlines()[-1] if result.stdout.strip() else 'done'}", "FIXED")
 
-    if result.returncode == 0:
+    if result.ok:
         return ("Ruff auto-fix", "No fixable lint issues found", "SKIPPED")
 
     return ("Ruff auto-fix", "Ruff ran but some issues remain (not auto-fixable)", "SKIPPED")

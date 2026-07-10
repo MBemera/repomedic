@@ -78,7 +78,7 @@ def _clone_repo(url: str) -> Path:
     clone_dir = Path(tempfile.mkdtemp(prefix="repomedic_"))
     err_console.print(f"[cyan]Cloning[/] {url} ...")
     result = run_proc(["git", "clone", "--depth", "1", url, str(clone_dir)], timeout=120)
-    if result.returncode != 0:
+    if not result.ok:
         err_console.print(f"[red]Clone failed:[/] {result.stderr.strip()}")
         raise typer.Exit(2)
     err_console.print(f"[green]Cloned to[/] {clone_dir}")

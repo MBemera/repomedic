@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 from repomedic.analyzers.semgrep import SemgrepAnalyzer
 from repomedic.core.context import ScanContext
-from repomedic.utils.process import ProcessResult
+from repomedic.utils.process import ProcessResult, ProcessStatus
 
 
 def test_semgrep_not_installed_is_silent(make_project):
@@ -14,7 +14,12 @@ def test_semgrep_not_installed_is_silent(make_project):
     project = make_project({"app.py": "print('hi')\n"})
 
     def fake_run(cmd, **kwargs):
-        return ProcessResult(returncode=-1, stdout="", stderr="Command not found: semgrep")
+        return ProcessResult(
+            status=ProcessStatus.not_found,
+            returncode=None,
+            stdout="",
+            stderr="Command not found: semgrep",
+        )
 
     with patch("repomedic.analyzers.semgrep.run", side_effect=fake_run):
         ctx = ScanContext(str(project))

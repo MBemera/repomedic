@@ -36,7 +36,7 @@ _OPTIONAL_TOOLS: list[tuple[str, list[str], str]] = [
 def _check_tool(name: str, cmd: list[str]) -> tuple[str, str, str]:
     """Check if a tool is installed and get its version. Returns (name, version, status)."""
     result = run(cmd, timeout=10)
-    if result.returncode < 0 or result.returncode != 0:
+    if not result.ok:
         return (name, "not found", MISSING)
     version = result.stdout.strip().splitlines()[0] if result.stdout.strip() else "installed"
     return (name, version, OK)
@@ -63,7 +63,7 @@ def _check_dependencies_installed(target: Path) -> list[tuple[str, str, str]]:
             for dep in deps:
                 name = parse_dep_name(dep)
                 result = run(["pip", "show", name], timeout=10)
-                if result.returncode != 0:
+                if not result.ok:
                     findings.append((f"pip: {name}", "not installed", MISSING))
                 else:
                     ver_lines = [ln for ln in result.stdout.splitlines() if ln.startswith("Version:")]
@@ -81,7 +81,7 @@ def _check_dependencies_installed(target: Path) -> list[tuple[str, str, str]]:
                 if raw_line and not raw_line.startswith("#") and not raw_line.startswith("-"):
                     name = parse_dep_name(raw_line)
                     result = run(["pip", "show", name], timeout=10)
-                    if result.returncode != 0:
+                    if not result.ok:
                         findings.append((f"pip: {name}", "not installed", MISSING))
                     else:
                         ver_lines = [ln for ln in result.stdout.splitlines() if ln.startswith("Version:")]

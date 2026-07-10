@@ -62,7 +62,7 @@ class SecurityAnalyzer(BaseAnalyzer):
         )
 
         findings: list[Finding] = []
-        if result.returncode >= 0:  # gitleaks is installed
+        if result.ran:  # gitleaks is installed
             try:
                 with open(report_path, encoding="utf-8") as f:
                     leaks = json.load(f)
@@ -157,7 +157,7 @@ class SecurityAnalyzer(BaseAnalyzer):
         env_ignored = False
         if ctx.has_git:
             result = run(["git", "check-ignore", "-q", ".env"], cwd=str(ctx.target), timeout=5)
-            env_ignored = result.returncode == 0
+            env_ignored = result.ok
         if not env_ignored:
             gitignore = ctx.target / ".gitignore"
             if gitignore.is_file():

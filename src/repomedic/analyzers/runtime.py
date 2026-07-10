@@ -10,7 +10,7 @@ from repomedic.analyzers import register
 from repomedic.analyzers.base import BaseAnalyzer
 from repomedic.core.context import ScanContext
 from repomedic.models import AnalyzerResult, Category, Finding, Severity
-from repomedic.utils.process import NOT_FOUND, run
+from repomedic.utils.process import ProcessStatus, run
 
 # Interpreter command per file extension. `sys.executable` keeps Python runs
 # inside the same environment repomedic was installed into.
@@ -98,12 +98,38 @@ class RuntimeAnalyzer(BaseAnalyzer):
                 error=f"Unsupported script type '{suffix}'. Supported extensions: {supported}",
             )
 
-        result = run([*interpreter, script_path, *(args or [])], cwd=cwd, timeout=30)
+        # The user explicitly asked to run their own script, so it gets the
+        # full environment — unlike scan tools, which run isolated.
+        result = run(
+            [*interpreter, script_path, *(args or [])],
+            cwd=cwd,
+            timeout=30,
+            env_mode="inherit",
+        )
 
-        if result.returncode == NOT_FOUND:
+        if result.tool_missing:
             return AnalyzerResult(
                 analyzer=self.name,
                 error=f"Interpreter not found: {interpreter[0]}. Install it to run {suffix} scripts.",
+            )
+        if result.status is ProcessStatus.failed_to_start:
+            return AnalyzerResult(analyzer=self.name, error=result.stderr)
+        if result.status is ProcessStatus.timed_out:
+            return AnalyzerResult(
+                analyzer=self.name,
+                findings=[
+                    Finding(
+                        category=Category.runtime,
+                        severity=Severity.error,
+                        code="RUN-001",
+                        title="Script timed out",
+                        description="Script was killed after running for 30s without finishing.",
+                        file_path=script_path,
+                        suggestion="Check for infinite loops or blocking calls; profile the slow section.",
+                        language=language,
+                        metadata={"timeout_seconds": 30},
+                    )
+                ],
             )
 
         findings: list[Finding] = []

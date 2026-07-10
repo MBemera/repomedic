@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 from repomedic.analyzers.dependencies import DependencyAnalyzer, parse_dep_name
 from repomedic.core.context import ScanContext
-from repomedic.utils.process import ProcessResult
+from repomedic.utils.process import ProcessResult, ProcessStatus
 
 
 def test_parse_dep_name():
@@ -35,8 +35,8 @@ def test_missing_package_detected(make_project):
     # Mock the pip list call to return empty
     def fake_run(cmd, **kwargs):
         if "pip" in cmd and "list" in cmd:
-            return ProcessResult(returncode=0, stdout="[]", stderr="")
-        return ProcessResult(returncode=-1, stdout="", stderr="")
+            return ProcessResult(status=ProcessStatus.ok, returncode=0, stdout="[]", stderr="")
+        return ProcessResult(status=ProcessStatus.not_found, returncode=None, stdout="", stderr="")
 
     with patch("repomedic.analyzers.dependencies.run", side_effect=fake_run):
         ctx = ScanContext(str(project))
@@ -88,8 +88,13 @@ def test_venv_exists_no_missing_deps(make_project):
 
     def fake_run(cmd, **kwargs):
         if "pip" in cmd and "list" in cmd:
-            return ProcessResult(returncode=0, stdout='[{"name": "requests", "version": "2.31.0"}]', stderr="")
-        return ProcessResult(returncode=-1, stdout="", stderr="")
+            return ProcessResult(
+                status=ProcessStatus.ok,
+                returncode=0,
+                stdout='[{"name": "requests", "version": "2.31.0"}]',
+                stderr="",
+            )
+        return ProcessResult(status=ProcessStatus.not_found, returncode=None, stdout="", stderr="")
 
     with patch("repomedic.analyzers.dependencies.run", side_effect=fake_run):
         ctx = ScanContext(str(project))

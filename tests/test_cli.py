@@ -175,15 +175,17 @@ def test_run_unsupported_script_reports_error(tmp_path):
 
 
 def test_run_missing_interpreter_exits_one(tmp_path, monkeypatch):
-    # Simulate the interpreter being absent (run() returns NOT_FOUND): the
-    # analyzer reports an error with no findings, which must still exit 1.
+    # Simulate the interpreter being absent: the analyzer reports an error
+    # with no findings, which must still exit 1.
     import repomedic.analyzers.runtime as runtime_mod
-    from repomedic.utils.process import NOT_FOUND, ProcessResult
+    from repomedic.utils.process import ProcessResult, ProcessStatus
 
     monkeypatch.setattr(
         runtime_mod,
         "run",
-        lambda cmd, **kw: ProcessResult(returncode=NOT_FOUND, stdout="", stderr="not found"),
+        lambda cmd, **kw: ProcessResult(
+            status=ProcessStatus.not_found, returncode=None, stdout="", stderr="not found"
+        ),
     )
     script = tmp_path / "app.py"
     script.write_text("print('hi')\n")
