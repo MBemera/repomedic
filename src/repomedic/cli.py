@@ -451,4 +451,6 @@ def agents() -> None:
     """Print the agent integration guide (markdown) — how agents should use this tool."""
     from repomedic.commands.agents import get_agent_guide
 
-    typer.echo(get_agent_guide())
+    # nl=False: the guide ends with its own newline, and the docs-sync
+    # contract is `repomedic agents > docs/AGENTS.md` being byte-equal.
+    typer.echo(get_agent_guide(), nl=False)
