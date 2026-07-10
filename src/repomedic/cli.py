@@ -126,8 +126,8 @@ def _execute_scan(
     allow_exec: Optional[bool] = None,
 ) -> None:
     """CLI shell around the scan service: flags in, rendered output + exit code out."""
-    if output not in {"rich", "json", "markdown", "md"}:
-        err_console.print(f"[red]Error:[/] invalid --output '{output}' (choose from: rich, json, markdown)")
+    if output not in {"rich", "json", "markdown", "md", "sarif"}:
+        err_console.print(f"[red]Error:[/] invalid --output '{output}' (choose from: rich, json, markdown, sarif)")
         raise typer.Exit(2)
 
     # The interactive analyzer picker is a human affordance, so it lives in
@@ -170,6 +170,10 @@ def _render_scan(outcome: ScanOutcome, *, output: str, report_file: Optional[str
     report = outcome.report
     if output == "json":
         typer.echo(print_json(report))
+    elif output == "sarif":
+        from repomedic.output.sarif_output import print_sarif
+
+        typer.echo(print_sarif(report))
     elif output in ("markdown", "md"):
         if report_file == STDOUT_SENTINEL:
             typer.echo(render_fix_report(report, include_snippets=snippets))
@@ -196,7 +200,7 @@ def _render_scan(outcome: ScanOutcome, *, output: str, report_file: Optional[str
 @app.command()
 def scan(
     target: str = typer.Argument(".", help="Local path or GitHub URL to scan"),
-    output: str = typer.Option("rich", "--output", "-o", help="Output format: rich, json, or markdown"),
+    output: str = typer.Option("rich", "--output", "-o", help="Output format: rich, json, markdown, or sarif"),
     all_analyzers: bool = typer.Option(False, "--all", "-A", help="Run all analyzers (the default; kept for compatibility)"),
     analyzers: Optional[str] = typer.Option(None, "--analyzers", "-a", help="Comma-separated analyzer names"),
     interactive: bool = typer.Option(False, "--interactive", "-i", help="Pick analyzers interactively"),
@@ -231,6 +235,7 @@ def scan(
 @app.command()
 def sniff(
     target: str = typer.Argument(".", help="Local path or GitHub URL to scan"),
+    output: str = typer.Option("markdown", "--output", "-o", help="Output format: markdown (default), json, or sarif"),
     analyzers: Optional[str] = typer.Option(None, "--analyzers", "-a", help="Comma-separated analyzer names"),
     min_severity: Optional[str] = typer.Option(None, "--min-severity", "-s", help="Minimum severity: error, warning, info"),
     changed: bool = typer.Option(False, "--changed", help="Only report findings in git-changed files"),
@@ -245,7 +250,7 @@ def sniff(
     """Bug-sniff a repo for agents: markdown fix report on stdout, exit 1 on errors."""
     _execute_scan(
         target,
-        output="markdown",
+        output=output,
         analyzers=analyzers,
         interactive=False,
         min_severity=min_severity,
