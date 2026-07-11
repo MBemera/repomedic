@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.2 (2026-07-11)
+
+### Changed
+- Restyled the scan progress animation: a green pulse-blip spinner and
+  stethoscope-branded bar replace the default braille-dots spinner.
+
 ## 0.7.1 (2026-07-11)
 
 ### Changed

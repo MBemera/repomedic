@@ -295,10 +295,12 @@ def _analyzer_progress(*, rich_ui: bool) -> Iterator[AnalyzerEventFn]:
         TimeElapsedColumn,
     )
 
+    # "point" reads as a heart-monitor blip — on brand, and visually
+    # distinct from the braille-dots spinner other CLIs use.
     progress_ui = Progress(
-        SpinnerColumn(),
-        TextColumn("[cyan]analyzers[/]"),
-        BarColumn(),
+        SpinnerColumn(spinner_name="point", style="bold green"),
+        TextColumn("[bold cyan]🩺 analyzers[/]"),
+        BarColumn(complete_style="green", finished_style="bold green"),
         MofNCompleteColumn(),
         TimeElapsedColumn(),
         TextColumn("[dim]{task.fields[running]}[/]"),
