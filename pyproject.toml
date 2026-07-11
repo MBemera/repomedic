@@ -4,11 +4,12 @@ build-backend = "hatchling.build"
 
 [project]
 name = "repomedic"
-version = "0.7.2"
+version = "0.7.3"
 description = "Agent-first repo bug sniffer — diagnose issues in folders and repos, hand the fixes to a coding agent"
 requires-python = ">=3.11"
 dependencies = [
     "typer>=0.9",
+    "click>=8,<9",
     "pydantic>=2.0",
     "rich>=13.0",
     "pyyaml>=6.0",
@@ -30,7 +31,7 @@ tools = [
 ]
 # MCP server for agent harnesses (`repomedic mcp`)
 mcp = [
-    "mcp>=1.2",
+    "mcp>=1.23,<2",  # 1.23.0 fixes PYSEC-2026-1617
 ]
 # Headless Python debugger capture (`repomedic debug` and VS Code integration)
 debug = [

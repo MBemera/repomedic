@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.7.3 (2026-07-11)
+
+### Fixed
+- Declared `click` as a direct dependency: `cli.py` imports it for the menu
+  dispatcher, and relying on it arriving transitively broke clean wheel
+  installs (caught by the CI dogfood and action-selftest gates).
+
+### Security
+- Raised the `mcp` extra floor to 1.23.0, which fixes PYSEC-2026-1617
+  (caught by the CI dependency-audit gate).
+
 ## 0.7.2 (2026-07-11)
 
 ### Changed
