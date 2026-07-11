@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from repomedic.core.languages import detect_languages, language_for_path
-from repomedic.utils.fs import discover_files
+from repomedic.utils.fs import discover_files, is_ignored_path
 
 
 class ScanContext:
@@ -56,6 +56,20 @@ class ScanContext:
     def files_for(self, language: str) -> list[Path]:
         """Files belonging to a given language (empty list if none)."""
         return self.files_by_language.get(language, [])
+
+    def is_ignored(self, path: Path) -> bool:
+        """True when discovery rules would exclude *path*.
+
+        Analyzers that shell out to tools which walk the tree themselves
+        (gitleaks, semgrep) filter their results through this so excludes
+        behave identically whether or not the external tool is installed.
+        """
+        return is_ignored_path(
+            path,
+            self.target,
+            skip_tests=self.skip_tests,
+            extra_ignore_dirs=self.extra_ignore_dirs,
+        )
 
     @property
     def python_files(self) -> list[Path]:

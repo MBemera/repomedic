@@ -9,7 +9,8 @@ guide can never drift between the CLI and the docs.
 
 from __future__ import annotations
 
-from importlib.resources import files
+# The py37 compatibility rule does not apply — this package requires 3.11+.
+from importlib.resources import files  # repomedic: ignore[python.lang.compatibility.*]
 
 
 def get_agent_guide() -> str:

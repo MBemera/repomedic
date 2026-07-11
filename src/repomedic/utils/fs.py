@@ -67,6 +67,34 @@ def _get_ignore_dirs(skip_tests: bool) -> set[str]:
         ignored -= {"tests", "test", "__tests__", "fixtures", "spec"}
     return ignored
 
+def is_ignored_path(
+    path: Path,
+    root: Path,
+    skip_tests: bool = True,
+    extra_ignore_dirs: set[str] | None = None,
+) -> bool:
+    """Return True when *path* would be skipped by ``discover_files``.
+
+    External scanners (gitleaks, semgrep) walk the target tree themselves,
+    so their findings must be filtered against the same ignore rules that
+    file discovery applies — otherwise ``exclude`` config and test-dir
+    skipping silently stop working whenever those tools are installed.
+    """
+    ignored = _get_ignore_dirs(skip_tests)
+    if extra_ignore_dirs:
+        ignored = ignored | extra_ignore_dirs
+    if path.is_absolute():
+        try:
+            relative = path.resolve().relative_to(root.resolve())
+        except (OSError, ValueError):
+            return True  # outside the scan root — never report it
+    else:
+        relative = path
+    if any(part in ignored for part in relative.parts[:-1]):
+        return True
+    return skip_tests and _is_test_file(relative.name)
+
+
 def discover_files(
     root: Path,
     extensions: set[str] | None = None,

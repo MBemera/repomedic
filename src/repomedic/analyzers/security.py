@@ -68,6 +68,10 @@ class SecurityAnalyzer(BaseAnalyzer):
 
         findings: list[Finding] = []
         for leak in leaks if isinstance(leaks, list) else []:
+            # Gitleaks walks the tree itself; apply the discovery ignore
+            # rules so excluded dirs and test files stay excluded.
+            if ctx.is_ignored(Path(leak.get("File", ""))):
+                continue
             findings.append(
                 Finding(
                     category=Category.security,

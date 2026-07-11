@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from repomedic.utils.fs import _is_test_file, discover_files
+from repomedic.utils.fs import _is_test_file, discover_files, is_ignored_path
 
 
 def test_discover_files_basic(tmp_path):
@@ -121,6 +121,28 @@ def test_discover_files_skips_broken_symlink(tmp_path):
 
     files = discover_files(tmp_path, skip_tests=False)
     assert [f.name for f in files] == ["app.py"]
+
+
+def test_is_ignored_path_matches_discovery_rules(tmp_path):
+    """is_ignored_path must mirror what discover_files would skip."""
+    root = tmp_path / "project"
+    root.mkdir()
+
+    assert is_ignored_path(Path("src/app.py"), root) is False
+    assert is_ignored_path(Path("__pycache__/app.pyc"), root) is True
+    assert is_ignored_path(Path("tests/test_app.py"), root) is True
+    assert is_ignored_path(Path("src/test_app.py"), root) is True
+    assert is_ignored_path(Path("tests/helper.py"), root, skip_tests=False) is False
+    assert is_ignored_path(Path("vendored/lib.py"), root, extra_ignore_dirs={"vendored"}) is True
+
+
+def test_is_ignored_path_absolute_paths(tmp_path):
+    root = tmp_path / "project"
+    root.mkdir()
+
+    assert is_ignored_path(root / "src" / "app.py", root) is False
+    assert is_ignored_path(root / "__pycache__" / "app.pyc", root) is True
+    assert is_ignored_path(tmp_path / "outside" / "app.py", root) is True
 
 
 def test_discover_files_does_not_follow_dir_symlinks(tmp_path):

@@ -44,6 +44,10 @@ class SemgrepAnalyzer(BaseAnalyzer):
             return AnalyzerResult(analyzer=self.name)
 
         for res in data.get("results", []):
+            # Semgrep walks the tree itself; apply the discovery ignore
+            # rules so excluded dirs and test files stay excluded.
+            if ctx.is_ignored(Path(res.get("path", ""))):
+                continue
             extra = res.get("extra", {})
             check_id = res.get("check_id", "SEMGREP-002")
             metadata: dict = {}
