@@ -9,6 +9,8 @@ Agent-first design rules:
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional  # noqa: UP035
 
@@ -20,6 +22,7 @@ from typer.core import TyperGroup
 
 from repomedic.analyzers import get_all_analyzers
 from repomedic.core.fingerprint import assign_fingerprints
+from repomedic.core.scanner import AnalyzerEventFn
 from repomedic.core.service import (
     ScanOutcome,
     ScanRequest,
@@ -248,9 +251,12 @@ def _execute_scan(
 
     outcome: ScanOutcome | None = None
     try:
-        outcome = run_scan(
-            request, progress=lambda msg: progress.print(f"[cyan]{msg}[/]")
-        )
+        with _analyzer_progress(rich_ui=output == "rich") as on_analyzer:
+            outcome = run_scan(
+                request,
+                progress=lambda msg: progress.print(f"[cyan]{msg}[/]"),
+                on_analyzer=on_analyzer,
+            )
         _render_scan(outcome, output=output, report_file=report_file, snippets=snippets)
         raise typer.Exit(outcome.exit_code)
     except ScanServiceError as exc:
@@ -259,6 +265,62 @@ def _execute_scan(
     finally:
         if outcome is not None:
             outcome.cleanup()
+
+
+@contextmanager
+def _analyzer_progress(*, rich_ui: bool) -> Iterator[AnalyzerEventFn]:
+    """Live per-analyzer progress so long scans are never a silent wait.
+
+    Rich mode shows a spinner/bar with the analyzers currently running;
+    machine outputs (json/markdown/sarif) get one dim tick line per
+    finished analyzer on stderr, keeping stdout pure.
+    """
+    if not rich_ui:
+
+        def on_stderr_event(event: str, name: str, completed: int, total: int) -> None:
+            if event == "done":
+                err_console.print(f"[dim]  ✓ {name} ({completed}/{total})[/]")
+            elif event == "timeout":
+                err_console.print(f"[yellow]  ⏱ {name} timed out ({completed}/{total})[/]")
+
+        yield on_stderr_event
+        return
+
+    from rich.progress import (
+        BarColumn,
+        MofNCompleteColumn,
+        Progress,
+        SpinnerColumn,
+        TextColumn,
+        TimeElapsedColumn,
+    )
+
+    progress_ui = Progress(
+        SpinnerColumn(),
+        TextColumn("[cyan]analyzers[/]"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TimeElapsedColumn(),
+        TextColumn("[dim]{task.fields[running]}[/]"),
+        console=console,
+        transient=True,
+    )
+    task_id = progress_ui.add_task("analyzers", total=None, running="")
+    running: set[str] = set()
+
+    def on_rich_event(event: str, name: str, completed: int, total: int) -> None:
+        # "start" arrives from worker threads; rich's internal lock makes
+        # concurrent task updates safe.
+        if event == "start":
+            running.add(name)
+        else:
+            running.discard(name)
+        progress_ui.update(
+            task_id, total=total, completed=completed, running=", ".join(sorted(running))
+        )
+
+    with progress_ui:
+        yield on_rich_event
 
 
 def _render_scan(

@@ -23,7 +23,7 @@ from typing import Callable
 from repomedic.analyzers import get_all_analyzers
 from repomedic.core.baseline import BASELINE_FILENAME, BaselineError, load_baseline
 from repomedic.core.config import VALID_FAIL_ON, VALID_SEVERITIES, load_config
-from repomedic.core.scanner import Scanner
+from repomedic.core.scanner import AnalyzerEventFn, Scanner
 from repomedic.models import ScanReport
 from repomedic.utils.process import run
 from repomedic.utils.vcs import changed_files
@@ -157,11 +157,18 @@ def _resolve_baseline(
     return fingerprints
 
 
-def run_scan(req: ScanRequest, *, progress: ProgressFn | None = None) -> ScanOutcome:
+def run_scan(
+    req: ScanRequest,
+    *,
+    progress: ProgressFn | None = None,
+    on_analyzer: AnalyzerEventFn | None = None,
+) -> ScanOutcome:
     """Run the full scan pipeline. Never prints, prompts, or exits.
 
-    The caller owns ``ScanOutcome.cleanup()`` (idempotent) once this
-    returns; on error the temporary clone is already removed.
+    ``on_analyzer`` receives per-analyzer start/done/timeout events so
+    callers can show live progress. The caller owns
+    ``ScanOutcome.cleanup()`` (idempotent) once this returns; on error the
+    temporary clone is already removed.
     """
     if req.min_severity is not None and req.min_severity not in VALID_SEVERITIES:
         raise ScanServiceError(
@@ -225,6 +232,7 @@ def run_scan(req: ScanRequest, *, progress: ProgressFn | None = None) -> ScanOut
             max_findings=max_findings,
             allow_exec=allow_exec,
             baseline_fingerprints=baseline_fingerprints,
+            on_analyzer=on_analyzer,
             **scan_kwargs,
         )
 

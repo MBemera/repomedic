@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.1 (2026-07-11)
+
+### Changed
+- Scans now show live per-analyzer progress instead of a silent wait: rich
+  output gets a spinner and progress bar naming the analyzers currently
+  running; json/markdown/sarif output gets one tick line per finished
+  analyzer on stderr, so stdout stays pure for machine consumers.
+
 ## 0.7.0 (2026-07-11)
 
 ### Added

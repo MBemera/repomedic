@@ -10,6 +10,7 @@ from __future__ import annotations
 import time
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from pathlib import PurePosixPath
+from typing import Callable
 
 from repomedic.analyzers import get_all_analyzers
 from repomedic.analyzers.base import BaseAnalyzer
@@ -21,6 +22,14 @@ MAX_PARALLEL_ANALYZERS = 4
 
 # Wall-clock budget per analyzer before the scanner stops waiting for it.
 DEFAULT_ANALYZER_TIMEOUT = 120.0
+
+AnalyzerEventFn = Callable[[str, str, int, int], None]
+"""Progress callback: (event, analyzer_name, completed_count, total).
+
+Events: ``start`` (analyzer began; fired from a worker thread), ``done``,
+``timeout`` (both fired from the scanning thread). The scanner stays
+print-free — callers render these however suits their output surface.
+"""
 
 
 class Scanner:
@@ -38,6 +47,7 @@ class Scanner:
         analyzer_timeout: float | None = DEFAULT_ANALYZER_TIMEOUT,
         allow_exec: bool = True,
         baseline_fingerprints: set[str] | None = None,
+        on_analyzer: AnalyzerEventFn | None = None,
     ) -> ScanReport:
         """Run applicable analyzers and return a ScanReport.
 
@@ -58,6 +68,7 @@ class Scanner:
                 untrusted targets; skipped checks are recorded per analyzer.
             baseline_fingerprints: Fingerprints from a baseline file —
                 matching findings are dropped and counted as suppressed.
+            on_analyzer: Per-analyzer progress callback (see AnalyzerEventFn).
         """
         start = time.monotonic()
         ctx = ScanContext(
@@ -84,9 +95,15 @@ class Scanner:
         # Analyzers are subprocess/I/O bound, so a small thread pool speeds up
         # scans considerably. Results keep registration order for determinism.
         if len(applicable) > 1:
-            results = _run_parallel(applicable, ctx, analyzer_timeout)
+            results = _run_parallel(applicable, ctx, analyzer_timeout, on_analyzer)
         else:
-            results = [_run_analyzer(a, ctx) for a in applicable]
+            results = []
+            for analyzer in applicable:
+                if on_analyzer:
+                    on_analyzer("start", analyzer.name, 0, len(applicable))
+                results.append(_run_analyzer(analyzer, ctx))
+                if on_analyzer:
+                    on_analyzer("done", analyzer.name, len(results), len(applicable))
         report.results = results
 
         # Before any filtering/truncation: fingerprints (incl. occurrence
@@ -134,6 +151,7 @@ def _run_parallel(
     applicable: list[BaseAnalyzer],
     ctx: ScanContext,
     analyzer_timeout: float | None,
+    on_analyzer: AnalyzerEventFn | None = None,
 ) -> list[AnalyzerResult]:
     """Run analyzers in a thread pool with a per-analyzer wall-clock deadline.
 
@@ -145,16 +163,24 @@ def _run_parallel(
     if every worker hangs.
     """
     starts: dict[str, float] = {}
+    results: dict[str, AnalyzerResult] = {}
+    total = len(applicable)
+
+    def emit(event: str, name: str, completed: int) -> None:
+        if on_analyzer:
+            on_analyzer(event, name, completed, total)
 
     def timed_run(a: BaseAnalyzer) -> AnalyzerResult:
         starts[a.name] = time.monotonic()
+        # `results` is bound before any submission, so worker threads can
+        # safely read its size for the running count.
+        emit("start", a.name, len(results))
         return _run_analyzer(a, ctx)
 
-    executor = ThreadPoolExecutor(max_workers=min(MAX_PARALLEL_ANALYZERS, len(applicable)))
+    executor = ThreadPoolExecutor(max_workers=min(MAX_PARALLEL_ANALYZERS, total))
     pending = {a.name: executor.submit(timed_run, a) for a in applicable}
-    results: dict[str, AnalyzerResult] = {}
     hard_deadline = (
-        time.monotonic() + analyzer_timeout * len(applicable) if analyzer_timeout else None
+        time.monotonic() + analyzer_timeout * total if analyzer_timeout else None
     )
 
     while pending:
@@ -168,6 +194,7 @@ def _run_parallel(
             if future.done():
                 results[name] = future.result()
                 del pending[name]
+                emit("done", name, len(results))
             elif timed_out:
                 elapsed = round(now - starts.get(name, now), 3)
                 results[name] = AnalyzerResult(
@@ -176,6 +203,7 @@ def _run_parallel(
                     elapsed_seconds=elapsed,
                 )
                 del pending[name]
+                emit("timeout", name, len(results))
 
     executor.shutdown(wait=False, cancel_futures=True)
     return [results[a.name] for a in applicable]

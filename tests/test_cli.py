@@ -39,6 +39,13 @@ def test_scan_json_stdout_is_pure_json(broken_project):
     assert "python" in data["languages"]
 
 
+def test_scan_json_shows_analyzer_progress_on_stderr(broken_project):
+    result = runner.invoke(app, [str(broken_project), "--output", "json"])
+    json.loads(result.stdout)  # progress must never leak into stdout
+    stderr = result.stderr if hasattr(result, "stderr") else ""
+    assert "✓" in stderr  # one tick line per finished analyzer
+
+
 def test_scan_default_exit_zero_even_with_findings(broken_project):
     result = runner.invoke(app, [str(broken_project), "--output", "json"])
     assert result.exit_code == 0  # default fail_on=never

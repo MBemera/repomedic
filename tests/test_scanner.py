@@ -105,6 +105,41 @@ def test_scan_extra_ignore_dirs(make_project):
     assert report_ignored.summary.errors == 0
 
 
+def test_scan_emits_analyzer_progress_events(make_project):
+    project = make_project({
+        "app.py": "x = 1\n",
+        "config.json": "{}\n",
+    })
+    events: list[tuple[str, str, int, int]] = []
+
+    report = Scanner().scan(
+        str(project), on_analyzer=lambda *event: events.append(event)
+    )
+
+    total = len(report.results)
+    assert total > 1  # the parallel path is the one that matters
+    starts = [e for e in events if e[0] == "start"]
+    finishes = [e for e in events if e[0] in ("done", "timeout")]
+    assert len(starts) == total
+    assert len(finishes) == total
+    assert {e[1] for e in starts} == {r.analyzer for r in report.results}
+    assert all(e[3] == total for e in events)
+    assert finishes[-1][2] == total  # completed count reaches the total
+
+
+def test_scan_emits_events_for_single_analyzer(make_project):
+    project = make_project({"app.py": "x = 1\n"})
+    events: list[tuple[str, str, int, int]] = []
+
+    Scanner().scan(
+        str(project),
+        analyzer_names=["static"],
+        on_analyzer=lambda *event: events.append(event),
+    )
+
+    assert events == [("start", "static", 0, 1), ("done", "static", 1, 1)]
+
+
 def test_finding_fingerprints_stable_and_serialized(fixtures_dir):
     import json
 
