@@ -1,0 +1,14 @@
+schema_version: 1
+analyzer: logs
+requires: []
+allow_exec: false
+initialize_git: false
+expect:
+  - analyzer: logs
+    code: LOG-001
+    file: app.log
+    lines: [2, 2]
+    severity: error
+forbid:
+  - LOG-002
+allow_extra: false

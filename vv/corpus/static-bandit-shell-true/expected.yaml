@@ -1,0 +1,21 @@
+schema_version: 1
+analyzer: static
+requires:
+  - bandit
+allow_exec: false
+initialize_git: false
+expect:
+  - analyzer: static
+    code: BANDIT-B404
+    file: app.py
+    lines: [1, 1]
+    severity: info
+  - analyzer: static
+    code: BANDIT-B602
+    file: app.py
+    lines: [5, 5]
+    severity: error
+forbid:
+  - STATIC-001
+  - STATIC-002
+allow_extra: false

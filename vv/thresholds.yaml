@@ -1,0 +1,41 @@
+schema_version: 1
+analyzers:
+  config:
+    precision: 1.0
+    recall: 1.0
+  dependencies:
+    precision: 1.0
+    recall: 1.0
+  git:
+    precision: 1.0
+    recall: 1.0
+  go:
+    precision: 1.0
+    recall: 1.0
+  hygiene:
+    precision: 1.0
+    recall: 1.0
+  javascript:
+    precision: 1.0
+    recall: 1.0
+  logs:
+    precision: 1.0
+    recall: 1.0
+  runtime:
+    precision: 1.0
+    recall: 1.0
+  rust:
+    precision: 1.0
+    recall: 1.0
+  security:
+    precision: 1.0
+    recall: 1.0
+  semgrep:
+    precision: 1.0
+    recall: 1.0
+  shell:
+    precision: 1.0
+    recall: 1.0
+  static:
+    precision: 1.0
+    recall: 1.0

@@ -1,0 +1,52 @@
+schema_version: 1
+analyzer: all
+requires: []
+allow_exec: false
+initialize_git: false
+expect: []
+forbid:
+  - CFG-001
+  - CFG-002
+  - CFG-003
+  - CFG-004
+  - CFG-005
+  - CFG-006
+  - CFG-007
+  - CFG-008
+  - CFG-010
+  - CFG-011
+  - CFG-012
+  - DEP-001
+  - DEP-002
+  - GIT-001
+  - GIT-002
+  - GIT-003
+  - GIT-004
+  - GIT-005
+  - GO-001
+  - GO-002
+  - GO-DEP-001
+  - GO-DEP-002
+  - GO-DEP-003
+  - HYG-001
+  - HYG-002
+  - HYG-003
+  - JS-001
+  - JS-DEP-001
+  - JS-DEP-002
+  - LOG-001
+  - LOG-002
+  - RUN-001
+  - RUN-002
+  - RUN-003
+  - RUN-004
+  - RUST-DEP-001
+  - RUST-DEP-002
+  - SEC-001
+  - SEC-002
+  - SEC-003
+  - SEMGREP-002
+  - SH-001
+  - STATIC-001
+  - STATIC-002
+allow_extra: false

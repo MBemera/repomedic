@@ -22,20 +22,27 @@ class GoAnalyzer(BaseAnalyzer):
 
     def analyze(self, ctx: ScanContext) -> AnalyzerResult:
         findings: list[Finding] = []
+        skipped: list[str] = []
 
-        # 1. Build check
-        findings.extend(self._check_build(ctx))
+        # go build/vet compile packages, and cgo pragmas can inject compiler
+        # flags — code execution by scan. govulncheck builds the code too.
+        if ctx.allow_exec:
+            # 1. Build check
+            findings.extend(self._check_build(ctx))
 
-        # 2. Go vet
-        findings.extend(self._run_vet(ctx))
+            # 2. Go vet
+            findings.extend(self._run_vet(ctx))
+        else:
+            skipped += ["go-build", "go-vet", "govulncheck"]
 
-        # 3. Module verification
+        # 3. Module verification (checksum verification, no build)
         findings.extend(self._check_modules(ctx))
 
         # 4. Vulnerability check
-        findings.extend(self._run_govulncheck(ctx))
+        if ctx.allow_exec:
+            findings.extend(self._run_govulncheck(ctx))
 
-        return AnalyzerResult(analyzer=self.name, findings=findings)
+        return AnalyzerResult(analyzer=self.name, findings=findings, skipped_checks=skipped)
 
     def _check_build(self, ctx: ScanContext) -> list[Finding]:
         """Run go build to detect compile errors."""
@@ -45,10 +52,10 @@ class GoAnalyzer(BaseAnalyzer):
             timeout=60,
         )
 
-        if result.returncode < 0:
+        if not result.ran:
             return []  # go not installed
 
-        if result.returncode == 0:
+        if result.ok:
             return []
 
         findings = []
@@ -62,10 +69,7 @@ class GoAnalyzer(BaseAnalyzer):
             match = re.match(r"(.+\.go):(\d+):(\d+):\s+(.+)", line)
             if match:
                 filepath, line_no, col, message = match.groups()
-                try:
-                    rel = str(Path(filepath).relative_to(ctx.target))
-                except ValueError:
-                    rel = filepath
+                rel = self._rel(Path(filepath), ctx)
 
                 findings.append(
                     Finding(
@@ -82,7 +86,7 @@ class GoAnalyzer(BaseAnalyzer):
                     )
                 )
 
-        if not findings and result.returncode != 0:
+        if not findings and not result.ok:
             findings.append(
                 Finding(
                     category=Category.static_analysis,
@@ -106,7 +110,7 @@ class GoAnalyzer(BaseAnalyzer):
             timeout=60,
         )
 
-        if result.returncode < 0 or result.returncode == 0:
+        if not result.ran or result.ok:
             return []
 
         findings = []
@@ -119,10 +123,7 @@ class GoAnalyzer(BaseAnalyzer):
             match = re.match(r"(.+\.go):(\d+):(\d+):\s+(.+)", line)
             if match:
                 filepath, line_no, col, message = match.groups()
-                try:
-                    rel = str(Path(filepath).relative_to(ctx.target))
-                except ValueError:
-                    rel = filepath
+                rel = self._rel(Path(filepath), ctx)
 
                 findings.append(
                     Finding(
@@ -181,10 +182,10 @@ class GoAnalyzer(BaseAnalyzer):
             timeout=30,
         )
 
-        if result.returncode < 0:
+        if not result.ran:
             return findings
 
-        if result.returncode != 0:
+        if not result.ok:
             findings.append(
                 Finding(
                     category=Category.dependency,
@@ -211,7 +212,7 @@ class GoAnalyzer(BaseAnalyzer):
             timeout=120,
         )
 
-        if result.returncode < 0:
+        if not result.ran:
             return []  # govulncheck not installed
 
         findings = []
@@ -242,11 +243,8 @@ class GoAnalyzer(BaseAnalyzer):
                 filepath = pos.get("filename", "")
                 line_no = pos.get("line")
                 
-                try:
-                    rel_path = str(Path(filepath).relative_to(ctx.target))
-                except ValueError:
-                    rel_path = filepath
-                
+                rel_path = self._rel(Path(filepath), ctx)
+
                 aliases = ", ".join(osv_info.get("aliases", []))
                 
                 findings.append(

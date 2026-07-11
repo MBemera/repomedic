@@ -44,7 +44,7 @@ repomedic sniff . --changed --fail-on error   # re-check only touched files; exi
 | **hygiene** | Oversized files, TODO/FIXME buildup, broken symlinks | any |
 | **logs** | Error patterns and tracebacks in log files | any |
 | **semgrep** | Advanced multi-language SAST (if installed) | 30+ |
-| **runtime** | Execute a script and analyze the failure (`repomedic run`) | py, js, sh, rb, php, pl, lua |
+| **runtime** | Execute a script and analyze the failure; capture Python frames and locals through DAP (`repomedic debug`) | py, js, sh, rb, php, pl, lua |
 
 Language detection covers 30+ languages (Python, JS/TS, Go, Rust, Java, Kotlin, C/C++, C#, Ruby, PHP, Swift, shell, SQL, Terraform, …) and drives per-language verify commands in the fix report.
 
@@ -54,8 +54,11 @@ Language detection covers 30+ languages (Python, JS/TS, Go, Rust, Java, Kotlin, 
 |---|---|
 | `repomedic sniff [PATH]` | **The agent command**: scan and print the markdown fix report to stdout; exit 1 on errors |
 | `repomedic [PATH]` | Scan with a rich terminal UI (health score, tables) — shorthand for `repomedic scan` |
+| `repomedic menu` | Interactive launcher — also what bare `repomedic` opens on a terminal; includes "Fix with coding agent" handoff |
 | `repomedic run script.py` | Run a script (any supported language) and analyze the failure |
+| `repomedic debug script.py` | Capture an uncaught Python exception with bounded frames and redacted locals |
 | `repomedic doctor` | Check the dev environment: interpreters, toolchains, project dependencies |
+| `repomedic selfcheck` | Verify installed-package integrity, schemas, rendering safety, and the bundled scan pipeline |
 | `repomedic explain` | Describe a project: type, languages, dependencies, structure |
 | `repomedic fix [--dry-run]` | Auto-fix safe issues (ruff, .gitignore, .env.example) |
 | `repomedic list-analyzers` | List available analyzers |
@@ -72,6 +75,9 @@ pip install -e .
 
 # optional: deeper analysis tools
 pip install -e ".[tools]"        # semgrep + bandit
+
+# optional: debugger capture only (included by the dev extra)
+pip install -e ".[debug]"        # debugpy
 ```
 
 Requires **Python 3.11+**. Core dependencies: `typer`, `pydantic`, `rich`, `pyyaml`. External tools (ruff, node, go, cargo, shellcheck, gitleaks) are used when present and skipped gracefully when not — `repomedic doctor` shows what's available.
@@ -82,8 +88,13 @@ Requires **Python 3.11+**. Core dependencies: `typer`, `pydantic`, `rich`, `pyya
 # Agent-ready fix report on stdout
 repomedic sniff .
 
-# Human-friendly scan of the current directory
+# Interactive launcher (bare invocation on a terminal opens the menu;
+# piped/scripted invocations always scan, so agents never see a prompt)
 repomedic
+
+# The menu's "Fix with coding agent" writes repomedic-fixes.md and, after a
+# y/N confirmation, launches your agent CLI on it (default `claude`;
+# override with REPOMEDIC_AGENT="codex --full-auto" or similar)
 
 # Scan a GitHub repo directly
 repomedic https://github.com/user/repo
@@ -99,7 +110,48 @@ repomedic . -a static,git,security -s warning --max-findings 25
 
 # Gate CI on errors
 repomedic . -o json --fail-on error
+
+# Capture a Python crash with frames and local variables
+repomedic debug path/to/script.py --timeout 60 -o json
+
+# Use the same debugger path through the multi-language run command
+repomedic run path/to/script.py --debug -o markdown
+
+# Verify the installed RepoMedic package and emit a machine-readable result
+repomedic selfcheck -o json
 ```
+
+## VS Code Extension
+
+The development extension in `editors/vscode/` adds workspace scans to the
+Problems panel, shows the RepoMedic health score in the status bar, and exposes
+interactive debugging and bounded crash-state capture from Python diagnostics.
+It is not published to the VS Code Marketplace yet.
+
+Install RepoMedic with debugger support, install the extension's pinned Node
+dependencies, then open the extension folder in VS Code:
+
+```bash
+pip install -e ".[debug]"
+cd editors/vscode
+npm ci --ignore-scripts
+code .
+```
+
+Press `F5` to compile the TypeScript and open an Extension Development Host.
+From that window, run **RepoMedic: Scan Workspace**, **RepoMedic: Debug Current
+File**, or **RepoMedic: Clear Diagnostics** from the Command Palette. Use
+`npm test` for the extension unit tests and `npm run package` to build a local
+VSIX; Marketplace publishing is intentionally out of scope for this release.
+
+The extension requires a trusted, filesystem-backed workspace and rejects
+virtual workspaces. Scans default to `repomedic.extraArgs = ["--no-exec"]`; enabling
+repo-controlled tool execution should be a deliberate choice for code you
+trust. `repomedic.path` and `repomedic.extraArgs` are machine-scoped settings,
+and RepoMedic is invoked with argument arrays rather than a shell. Scan output,
+argument sizes, time, and diagnostic counts are bounded. See
+[the extension guide](editors/vscode/README.md) for configuration and security
+details.
 
 ## The fix report
 
@@ -194,11 +246,44 @@ src/repomedic/
 │   ├── rich_output.py     # Terminal UI
 │   ├── markdown_output.py # Agent handoff report
 │   └── json_output.py     # JSON output
+├── debug/
+│   ├── dap.py             # Bounded Debug Adapter Protocol transport
+│   └── session.py         # Headless debugpy crash capture
 └── utils/
     ├── process.py         # Subprocess runner with timeouts
     ├── fs.py              # File discovery with ignore rules
     └── vcs.py             # Git changed-file discovery
+
+editors/vscode/
+├── src/extension.ts       # VS Code commands, diagnostics, debugging, code actions
+├── src/files.ts           # Canonical workspace and symlink containment
+├── src/report.ts          # Pure report-to-diagnostic mapping
+└── src/runner.ts          # Bounded, shell-free RepoMedic process execution
 ```
+
+## Validation and verification
+
+`repomedic selfcheck` is the installed-package smoke test. It checks all 13
+analyzer imports, isolated Python and Git availability, a bundled no-exec scan,
+the exported schemas, markdown rendering safety, and optional extras. It exits
+`0` only when every required check passes; `extras-status` is informational.
+
+The full V&V framework lives in a source checkout under `vv/` and `tests/` and
+is intentionally excluded from the wheel:
+
+```bash
+repomedic selfcheck -o json          # installed-package integrity
+pytest -q -m "not toolchain"         # portable suite
+pytest -q tests/contract             # output and exit-code contracts
+pytest -q -m adversarial             # hostile-input and boundary tests
+pytest -q -m corpus                  # ground-truth cases; unavailable tools skip
+python -m vv.scorer                  # precision/recall threshold table
+python -m vv.scorer --strict         # fail when a declared toolchain is missing
+```
+
+CI also runs strict corpus scoring with the declared external toolchains,
+enforces the 75% coverage floor, audits dependencies, and dogfoods the built
+wheel with `selfcheck` and a no-exec repository scan.
 
 ## Development
 
@@ -206,6 +291,11 @@ src/repomedic/
 pip install -e ".[dev]"
 pytest                      # run tests
 ruff check src/ tests/      # lint
+
+cd editors/vscode
+npm ci --ignore-scripts
+npm test                    # compile and test the VS Code extension
+npm audit --audit-level=high
 ```
 
 ## License

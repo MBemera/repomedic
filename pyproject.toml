@@ -4,25 +4,41 @@ build-backend = "hatchling.build"
 
 [project]
 name = "repomedic"
-version = "0.2.0"
+version = "0.7.3"
 description = "Agent-first repo bug sniffer — diagnose issues in folders and repos, hand the fixes to a coding agent"
 requires-python = ">=3.11"
 dependencies = [
     "typer>=0.9",
+    "click>=8,<9",
     "pydantic>=2.0",
     "rich>=13.0",
     "pyyaml>=6.0",
+    # Floor at 4.25 (not 4.26): semgrep pins jsonschema~=4.25.1, and a 4.26
+    # floor forces pip to backtrack to ancient semgrep releases with
+    # vulnerable transitive dependencies.
+    "jsonschema>=4.25,<5",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
     "ruff>=0.4",
+    "mypy>=1.10",
+    "debugpy>=1.8.21,<2",
+    "pytest-cov>=7.1,<8",
 ]
 # Optional analysis tools that unlock deeper findings
 tools = [
     "semgrep>=1.0",
     "bandit>=1.7",
+]
+# MCP server for agent harnesses (`repomedic mcp`)
+mcp = [
+    "mcp>=1.23,<2",  # 1.23.0 fixes PYSEC-2026-1617
+]
+# Headless Python debugger capture (`repomedic debug` and VS Code integration)
+debug = [
+    "debugpy>=1.8.21,<2",
 ]
 
 [project.scripts]
@@ -33,7 +49,26 @@ packages = ["src/repomedic"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "corpus: ground-truth validation corpus cases",
+    "adversarial: security and untrusted-input regression cases",
+    "toolchain: corpus cases that require external analysis toolchains",
+]
 
 [tool.ruff]
 target-version = "py311"
-extend-exclude = ["tests/fixtures"]
+extend-exclude = ["tests/fixtures", "vv/corpus"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+check_untyped_defs = true
+exclude = ["^vv/corpus/"]
+
+[tool.coverage.run]
+branch = true
+source = ["repomedic"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true

@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import ast
-import json
 from pathlib import Path
 
 from repomedic.analyzers import register
-from repomedic.analyzers.base import BaseAnalyzer
+from repomedic.analyzers.base import BaseAnalyzer, map_severity
 from repomedic.core.context import ScanContext
 from repomedic.models import AnalyzerResult, Category, Finding, Severity
-from repomedic.utils.process import run
+from repomedic.utils.process import JSON_REPORT_PLACEHOLDER, run_json_tool
 
 
 @register
@@ -52,7 +51,7 @@ class StaticAnalyzer(BaseAnalyzer):
                         code="STATIC-001",
                         title="Syntax error",
                         description=str(e.msg),
-                        file_path=str(py_file.relative_to(ctx.target)),
+                        file_path=self._rel(py_file, ctx),
                         line=e.lineno,
                         column=e.offset,
                         suggestion=f"Fix the syntax error: {e.msg}",
@@ -61,19 +60,13 @@ class StaticAnalyzer(BaseAnalyzer):
         return findings
 
     def _run_ruff(self, ctx: ScanContext) -> list[Finding]:
-        result = run(
+        issues, _result = run_json_tool(
             ["ruff", "check", "--output-format", "json", "--no-fix", str(ctx.target)],
             cwd=str(ctx.target),
             timeout=30,
         )
-
-        if result.returncode < 0:
-            return []  # ruff not installed or timed out
-
-        try:
-            issues = json.loads(result.stdout) if result.stdout.strip() else []
-        except json.JSONDecodeError:
-            return []
+        if not isinstance(issues, list):
+            return []  # ruff not installed, timed out, or no JSON
 
         allowed_files = {str(f.resolve()) for f in ctx.python_files}
 
@@ -83,10 +76,7 @@ class StaticAnalyzer(BaseAnalyzer):
             if abs_path not in allowed_files:
                 continue
 
-            try:
-                rel_path = str(Path(issue["filename"]).relative_to(ctx.target))
-            except ValueError:
-                rel_path = issue.get("filename", "")
+            rel_path = self._rel(Path(issue.get("filename", "")), ctx)
 
             severity = Severity.warning
             if issue.get("code", "").startswith("E9"):
@@ -111,64 +101,41 @@ class StaticAnalyzer(BaseAnalyzer):
         return findings
 
     def _run_bandit(self, ctx: ScanContext) -> list[Finding]:
-        import tempfile
-        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tmp:
-            report_path = tmp.name
-
-        # bandit -r <dir> -f json -o <file> --quiet
-        result = run(
-            ["bandit", "-r", str(ctx.target), "-f", "json", "-o", report_path, "-q"],
+        data, _result = run_json_tool(
+            ["bandit", "-r", str(ctx.target), "-f", "json", "-o", JSON_REPORT_PLACEHOLDER, "-q"],
             cwd=str(ctx.target),
             timeout=60,
         )
+        if not isinstance(data, dict):
+            return []  # bandit not installed, timed out, or no JSON
 
-        if result.returncode < 0:
-            Path(report_path).unlink(missing_ok=True)
-            return []  # bandit not installed or timed out
+        allowed_files = {str(f.resolve()) for f in ctx.python_files}
 
         findings = []
-        try:
-            with open(report_path, encoding="utf-8") as f:
-                data = json.load(f)
-            
-            allowed_files = {str(f.resolve()) for f in ctx.python_files}
-            
-            for issue in data.get("results", []):
-                abs_path = str(Path(issue.get("filename", "")).resolve())
-                if abs_path not in allowed_files:
-                    continue
-                
-                try:
-                    rel_path = str(Path(abs_path).relative_to(ctx.target))
-                except ValueError:
-                    rel_path = issue.get("filename", "")
-                
-                sev_str = issue.get("issue_severity", "LOW").upper()
-                if sev_str == "HIGH":
-                    severity = Severity.error
-                elif sev_str == "LOW":
-                    severity = Severity.info
-                else:
-                    severity = Severity.warning
+        for issue in data.get("results", []):
+            abs_path = str(Path(issue.get("filename", "")).resolve())
+            if abs_path not in allowed_files:
+                continue
 
-                findings.append(
-                    Finding(
-                        category=Category.security,
-                        severity=severity,
-                        code=f"BANDIT-{issue.get('test_id', 'UNKNOWN')}",
-                        title=issue.get("test_name", "Bandit Warning"),
-                        description=issue.get("issue_text", ""),
-                        file_path=rel_path,
-                        line=issue.get("line_number"),
-                        suggestion="Review this security warning from Bandit.",
-                        metadata={"confidence": issue.get("issue_confidence")},
-                    )
+            metadata: dict = {"confidence": issue.get("issue_confidence")}
+            # B105/B106/B107 flag hardcoded passwords — the flagged line
+            # contains the secret, so the snippet renderer must withhold it.
+            if issue.get("test_id") in ("B105", "B106", "B107"):
+                metadata["contains_secret"] = True
+
+            findings.append(
+                Finding(
+                    category=Category.security,
+                    severity=map_severity("bandit", issue.get("issue_severity", "LOW"), Severity.warning),
+                    code=f"BANDIT-{issue.get('test_id', 'UNKNOWN')}",
+                    title=issue.get("test_name", "Bandit Warning"),
+                    description=issue.get("issue_text", ""),
+                    file_path=self._rel(Path(abs_path), ctx),
+                    line=issue.get("line_number"),
+                    suggestion="Review this security warning from Bandit.",
+                    metadata=metadata,
                 )
-
-        except (json.JSONDecodeError, FileNotFoundError):
-            pass
-        finally:
-            Path(report_path).unlink(missing_ok=True)
+            )
 
         return findings
 
@@ -240,11 +207,7 @@ class StaticAnalyzer(BaseAnalyzer):
                             code="STATIC-002",
                             title="Circular import detected",
                             description=f"Circular import chain: {cycle_str}",
-                            file_path=str(
-                                module_files.get(cycle[0], Path()).relative_to(
-                                    ctx.target
-                                )
-                            )
+                            file_path=self._rel(module_files[cycle[0]], ctx)
                             if cycle[0] in module_files
                             else None,
                             suggestion="Break the circular import by moving shared code to a separate module or using lazy imports.",

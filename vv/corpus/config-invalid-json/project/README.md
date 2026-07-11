@@ -1,0 +1,1 @@
+# Invalid JSON corpus case

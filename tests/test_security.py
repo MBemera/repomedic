@@ -2,8 +2,31 @@
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 from repomedic.analyzers.security import SecurityAnalyzer
 from repomedic.core.context import ScanContext
+from repomedic.utils.process import ProcessResult, ProcessStatus
+
+
+def test_gitleaks_findings_in_ignored_dirs_are_filtered(make_project):
+    """Gitleaks walks the tree itself, so excludes must be re-applied to its results."""
+    project = make_project({"app.py": "print('hi')\n"})
+
+    def fake_run_json_tool(cmd, **kwargs):
+        leaks = [
+            {"RuleID": "generic-api-key", "File": "__pycache__/app.pyc", "StartLine": 1, "Match": "key=abc123"},
+            {"RuleID": "generic-api-key", "File": "tests/test_app.py", "StartLine": 1, "Match": "key=abc123"},
+            {"RuleID": "generic-api-key", "File": "config.py", "StartLine": 1, "Match": "key=abc123"},
+        ]
+        return leaks, ProcessResult(status=ProcessStatus.ok, returncode=1, stdout="", stderr="")
+
+    with patch("repomedic.analyzers.security.run_json_tool", side_effect=fake_run_json_tool):
+        ctx = ScanContext(str(project))
+        result = SecurityAnalyzer().analyze(ctx)
+
+    secret_findings = [f for f in result.findings if f.code == "SEC-001"]
+    assert [f.file_path for f in secret_findings] == ["config.py"]
 
 
 def test_hardcoded_aws_key(make_project):

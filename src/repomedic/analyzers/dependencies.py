@@ -78,7 +78,7 @@ class DependencyAnalyzer(BaseAnalyzer):
             return []  # can't check without a venv
 
         result = run([target_python, "-m", "pip", "list", "--format", "json"], timeout=15)
-        if result.returncode != 0:
+        if not result.ok:
             return []
 
         try:

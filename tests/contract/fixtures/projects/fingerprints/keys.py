@@ -1,0 +1,2 @@
+example_key = "AKIAIOSFODNN7EXAMPLE"
+example_key = "AKIAIOSFODNN7EXAMPLE"

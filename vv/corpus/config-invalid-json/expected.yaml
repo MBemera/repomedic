@@ -1,0 +1,17 @@
+schema_version: 1
+analyzer: config
+requires: []
+allow_exec: false
+initialize_git: false
+expect:
+  - analyzer: config
+    code: CFG-010
+    file: config/settings.json
+    lines: [1, 1]
+    severity: error
+forbid:
+  - CFG-001
+  - CFG-004
+  - CFG-011
+  - CFG-012
+allow_extra: false

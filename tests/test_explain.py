@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from repomedic.commands.explain import _detect_project_type, _get_dependencies, run_explain
+from repomedic.commands.explain import _detect_project_type, _get_dependencies, collect_explain
 
 
 def test_detect_django_project(tmp_path):
@@ -48,11 +48,12 @@ def test_get_dependencies_with_descriptions(tmp_path):
     assert deps[0][1] != "third-party package"  # should have a known description
 
 
-def test_run_explain(tmp_path):
+def test_collect_explain(tmp_path):
     (tmp_path / "pyproject.toml").write_text(
         '[project]\nname = "test"\ndependencies = ["flask"]\n'
     )
     (tmp_path / "app.py").write_text("from flask import Flask\napp = Flask(__name__)\n")
-    result = run_explain(tmp_path)
-    assert "project_type" in result
-    assert "dependencies" in result
+    result = collect_explain(tmp_path)
+    assert result.schema_version == 1
+    assert result.project_type
+    assert any(d.name == "flask" for d in result.dependencies)

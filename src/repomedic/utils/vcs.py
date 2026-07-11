@@ -1,10 +1,20 @@
-"""Git helpers — changed-file discovery for scoped scans."""
+"""Git helpers — hardened git invocation and changed-file discovery."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from repomedic.utils.process import run
+from repomedic.utils.process import ProcessResult, run
+
+# A scanned repo's own .git/config must not be able to execute code when we
+# inspect it: core.fsmonitor can name a command `git status` would run, and
+# hooksPath could point hooks at repo-controlled scripts.
+_GIT_HARDENING = ["-c", "core.fsmonitor=false", "-c", "core.hooksPath="]
+
+
+def run_git(args: list[str], *, cwd: str, timeout: int = 15) -> ProcessResult:
+    """Run a git command against a possibly untrusted repository."""
+    return run(["git", *_GIT_HARDENING, *args], cwd=cwd, timeout=timeout)
 
 
 def changed_files(target: Path, since: str | None = None) -> set[str] | None:
@@ -20,25 +30,32 @@ def changed_files(target: Path, since: str | None = None) -> set[str] | None:
     paths: set[str] = set()
 
     if since:
-        diff = run(["git", "diff", "--name-only", since], cwd=str(target), timeout=15)
-        if diff.returncode != 0:
+        diff = run_git(["diff", "--name-only", "-z", since], cwd=str(target))
+        if not diff.ok:
             return None
-        paths.update(ln.strip() for ln in diff.stdout.splitlines() if ln.strip())
+        paths.update(p for p in diff.stdout.split("\0") if p)
 
+    # -z gives NUL-separated, unquoted paths (spaces/unicode survive intact);
     # -uall lists files inside untracked directories individually (instead of
     # collapsing to "dir/"), which finding paths need for exact matching.
-    status = run(["git", "status", "--porcelain", "-uall"], cwd=str(target), timeout=15)
-    if status.returncode != 0:
+    status = run_git(["status", "--porcelain", "-z", "-uall"], cwd=str(target))
+    if not status.ok:
         return None
-    for line in status.stdout.splitlines():
-        if len(line) < 4:
+
+    fields = status.stdout.split("\0")
+    i = 0
+    while i < len(fields):
+        entry = fields[i]
+        i += 1
+        if len(entry) < 4:
             continue
-        entry = line[3:].strip().strip('"')
-        # Renames are reported as "old -> new"; keep the new path.
-        if " -> " in entry:
-            entry = entry.split(" -> ", 1)[1].strip().strip('"')
-        if since and not line.startswith("??"):
+        xy, path = entry[:2], entry[3:]
+        # Renames/copies are "XY new" followed by the original path as its
+        # own NUL field — consume it so it is not parsed as an entry.
+        if xy[0] in "RC":
+            i += 1
+        if since and not xy.startswith("??"):
             continue  # tracked changes already covered by git diff <since>
-        paths.add(entry)
+        paths.add(path)
 
     return paths

@@ -5,11 +5,11 @@ from __future__ import annotations
 import json
 
 import pytest
-from typer.testing import CliRunner
 
 from repomedic.cli import app
+from tests.cli_runner import create_cli_runner
 
-runner = CliRunner()
+runner = create_cli_runner()
 
 
 @pytest.fixture
@@ -34,9 +34,16 @@ def clean_project(make_project):
 def test_scan_json_stdout_is_pure_json(broken_project):
     result = runner.invoke(app, [str(broken_project), "--output", "json"])
     data = json.loads(result.stdout)  # raises if any non-JSON noise leaked
-    assert data["schema_version"] == 2
+    assert data["schema_version"] == 3
     assert data["summary"]["errors"] >= 1
     assert "python" in data["languages"]
+
+
+def test_scan_json_shows_analyzer_progress_on_stderr(broken_project):
+    result = runner.invoke(app, [str(broken_project), "--output", "json"])
+    json.loads(result.stdout)  # progress must never leak into stdout
+    stderr = result.stderr if hasattr(result, "stderr") else ""
+    assert "✓" in stderr  # one tick line per finished analyzer
 
 
 def test_scan_default_exit_zero_even_with_findings(broken_project):
@@ -115,7 +122,9 @@ def test_agents_command_prints_guide():
 
 def test_list_analyzers_json():
     result = runner.invoke(app, ["list-analyzers", "-o", "json"])
-    names = {a["name"] for a in json.loads(result.stdout)}
+    data = json.loads(result.stdout)
+    assert data["schema_version"] == 1
+    names = {a["name"] for a in data["analyzers"]}
     assert {"static", "git", "security", "shell", "hygiene"} <= names
 
 
@@ -136,8 +145,9 @@ def test_explain_markdown(clean_project):
 def test_fix_dry_run_writes_nothing(make_project):
     project = make_project({"app.py": "x = 1\n"})
     result = runner.invoke(app, ["fix", str(project), "--dry-run", "-o", "json"])
-    rows = json.loads(result.stdout)
-    gitignore_row = next(r for r in rows if r["action"] == ".gitignore")
+    data = json.loads(result.stdout)
+    assert data["dry_run"] is True
+    gitignore_row = next(r for r in data["actions"] if r["action"] == ".gitignore")
     assert gitignore_row["status"] == "WOULD FIX"
     assert not (project / ".gitignore").exists()
 
@@ -175,15 +185,17 @@ def test_run_unsupported_script_reports_error(tmp_path):
 
 
 def test_run_missing_interpreter_exits_one(tmp_path, monkeypatch):
-    # Simulate the interpreter being absent (run() returns NOT_FOUND): the
-    # analyzer reports an error with no findings, which must still exit 1.
+    # Simulate the interpreter being absent: the analyzer reports an error
+    # with no findings, which must still exit 1.
     import repomedic.analyzers.runtime as runtime_mod
-    from repomedic.utils.process import NOT_FOUND, ProcessResult
+    from repomedic.utils.process import ProcessResult, ProcessStatus
 
     monkeypatch.setattr(
         runtime_mod,
         "run",
-        lambda cmd, **kw: ProcessResult(returncode=NOT_FOUND, stdout="", stderr="not found"),
+        lambda cmd, **kw: ProcessResult(
+            status=ProcessStatus.not_found, returncode=None, stdout="", stderr="not found"
+        ),
     )
     script = tmp_path / "app.py"
     script.write_text("print('hi')\n")

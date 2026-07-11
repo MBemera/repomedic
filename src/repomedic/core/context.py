@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from repomedic.core.languages import detect_languages, language_for_path
-from repomedic.utils.fs import discover_files
+from repomedic.utils.fs import discover_files, is_ignored_path
 
 
 class ScanContext:
@@ -16,10 +16,15 @@ class ScanContext:
         target: str | Path,
         skip_tests: bool = True,
         extra_ignore_dirs: set[str] | None = None,
+        allow_exec: bool = True,
     ) -> None:
         self.target = Path(target).resolve()
         self.skip_tests = skip_tests
         self.extra_ignore_dirs = extra_ignore_dirs or set()
+        # Whether analyzers may run tools that execute repo-controlled code
+        # (cargo check runs build.rs, eslint loads eslint.config.js, ...).
+        # False for untrusted targets, e.g. freshly cloned URLs.
+        self.allow_exec = allow_exec
         if not self.target.is_dir():
             raise FileNotFoundError(f"Target directory not found: {self.target}")
 
@@ -51,6 +56,20 @@ class ScanContext:
     def files_for(self, language: str) -> list[Path]:
         """Files belonging to a given language (empty list if none)."""
         return self.files_by_language.get(language, [])
+
+    def is_ignored(self, path: Path) -> bool:
+        """True when discovery rules would exclude *path*.
+
+        Analyzers that shell out to tools which walk the tree themselves
+        (gitleaks, semgrep) filter their results through this so excludes
+        behave identically whether or not the external tool is installed.
+        """
+        return is_ignored_path(
+            path,
+            self.target,
+            skip_tests=self.skip_tests,
+            extra_ignore_dirs=self.extra_ignore_dirs,
+        )
 
     @property
     def python_files(self) -> list[Path]:

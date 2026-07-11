@@ -7,6 +7,7 @@ from pathlib import Path
 from rich.console import Console
 from rich.table import Table
 
+from repomedic.models_commands import FixAction
 from repomedic.utils.process import run
 
 console = Console()
@@ -51,16 +52,17 @@ htmlcov/
 """
 
 
-def collect_fixes(target: Path, dry_run: bool = False) -> list[tuple[str, str, str]]:
-    """Run (or preview) all auto-fixes. Returns (action, description, status) rows."""
-    return [
+def collect_fixes(target: Path, dry_run: bool = False) -> list[FixAction]:
+    """Run (or preview) all auto-fixes."""
+    rows = [
         _fix_ruff(target, dry_run),
         _fix_gitignore(target, dry_run),
         _fix_env_example(target, dry_run),
     ]
+    return [FixAction(action=a, description=d, status=s) for a, d, s in rows]  # type: ignore[arg-type]
 
 
-def render_fixes(fixes: list[tuple[str, str, str]], dry_run: bool = False, out: Console | None = None) -> None:
+def render_fixes(fixes: list[FixAction], dry_run: bool = False, out: Console | None = None) -> None:
     """Render fix results as a rich table."""
     out = out or console
     title = "Fix Summary (dry run — nothing changed)" if dry_run else "Fix Summary"
@@ -69,30 +71,23 @@ def render_fixes(fixes: list[tuple[str, str, str]], dry_run: bool = False, out: 
     table.add_column("Description", min_width=30)
     table.add_column("Status", width=12, justify="center")
 
-    for action, desc, status in fixes:
-        if status in ("FIXED", "WOULD FIX"):
+    for fix in fixes:
+        if fix.status in ("FIXED", "WOULD FIX"):
             style = "green"
-        elif status == "SKIPPED":
+        elif fix.status == "SKIPPED":
             style = "yellow"
         else:
             style = "red"
-        table.add_row(action, desc, f"[{style}]{status}[/{style}]")
+        table.add_row(fix.action, fix.description, f"[{style}]{fix.status}[/{style}]")
 
     out.print(table)
-
-
-def run_fix(target: Path, dry_run: bool = False) -> list[tuple[str, str, str]]:
-    """Run all auto-fixes on the target directory, print a summary, return rows."""
-    fixes = collect_fixes(target, dry_run)
-    render_fixes(fixes, dry_run)
-    return fixes
 
 
 def _fix_ruff(target: Path, dry_run: bool = False) -> tuple[str, str, str]:
     """Run ruff check --fix (or --diff in dry-run mode)."""
     if dry_run:
         result = run(["ruff", "check", "--diff", str(target)], cwd=str(target), timeout=30)
-        if result.returncode < 0:
+        if not result.ran:
             return ("Ruff auto-fix", "Auto-fix lint issues with ruff", "SKIPPED")
         if result.stdout.strip():
             n_hunks = result.stdout.count("--- ")
@@ -100,14 +95,14 @@ def _fix_ruff(target: Path, dry_run: bool = False) -> tuple[str, str, str]:
         return ("Ruff auto-fix", "No fixable lint issues found", "SKIPPED")
 
     result = run(["ruff", "check", "--fix", str(target)], cwd=str(target), timeout=30)
-    if result.returncode < 0:
+    if not result.ran:
         return ("Ruff auto-fix", "Auto-fix lint issues with ruff", "SKIPPED")
 
     # Check if ruff made changes
     if "Fixed" in result.stdout or "fixed" in result.stdout:
         return ("Ruff auto-fix", f"Applied ruff fixes: {result.stdout.strip().splitlines()[-1] if result.stdout.strip() else 'done'}", "FIXED")
 
-    if result.returncode == 0:
+    if result.ok:
         return ("Ruff auto-fix", "No fixable lint issues found", "SKIPPED")
 
     return ("Ruff auto-fix", "Ruff ran but some issues remain (not auto-fixable)", "SKIPPED")

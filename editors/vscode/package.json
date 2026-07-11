@@ -1,0 +1,109 @@
+{
+  "name": "repomedic-vscode",
+  "displayName": "RepoMedic",
+  "description": "Scan workspaces with RepoMedic and debug Python findings.",
+  "version": "0.1.0",
+  "publisher": "repomedic",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MBemera/repomedic.git"
+  },
+  "engines": {
+    "vscode": "^1.92.0"
+  },
+  "extensionKind": [
+    "workspace"
+  ],
+  "categories": [
+    "Linters",
+    "Debuggers"
+  ],
+  "keywords": [
+    "repomedic",
+    "diagnostics",
+    "debugging",
+    "security"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "extensionDependencies": [
+    "ms-python.debugpy"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "RepoMedic executes a local CLI and debugger only in trusted workspaces."
+    },
+    "virtualWorkspaces": {
+      "supported": false,
+      "description": "RepoMedic requires a local or remote filesystem and process execution."
+    }
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "repomedic.scanWorkspace",
+        "title": "RepoMedic: Scan Workspace",
+        "category": "RepoMedic"
+      },
+      {
+        "command": "repomedic.debugCurrentFile",
+        "title": "RepoMedic: Debug Current File",
+        "category": "RepoMedic"
+      },
+      {
+        "command": "repomedic.clearDiagnostics",
+        "title": "RepoMedic: Clear Diagnostics",
+        "category": "RepoMedic"
+      }
+    ],
+    "configuration": {
+      "title": "RepoMedic",
+      "properties": {
+        "repomedic.path": {
+          "type": "string",
+          "default": "repomedic",
+          "scope": "machine",
+          "description": "RepoMedic executable name or absolute path. Relative paths containing separators are rejected."
+        },
+        "repomedic.extraArgs": {
+          "type": "array",
+          "default": [
+            "--no-exec"
+          ],
+          "scope": "machine",
+          "maxItems": 32,
+          "items": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "description": "Extra scan arguments. Output and max-findings overrides are rejected."
+        },
+        "repomedic.maxFindings": {
+          "type": "integer",
+          "default": 200,
+          "minimum": 1,
+          "maximum": 5000,
+          "scope": "resource",
+          "description": "Maximum number of file diagnostics shown in the Problems panel."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc --watch -p ./",
+    "test": "npm run compile && node --test test/*.test.js",
+    "package": "vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.21",
+    "@types/vscode": "1.92.0",
+    "@vscode/vsce": "3.9.2",
+    "typescript": "6.0.3"
+  }
+}

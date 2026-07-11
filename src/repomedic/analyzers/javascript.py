@@ -7,10 +7,10 @@ import re
 from pathlib import Path
 
 from repomedic.analyzers import register
-from repomedic.analyzers.base import BaseAnalyzer
+from repomedic.analyzers.base import BaseAnalyzer, map_severity
 from repomedic.core.context import ScanContext
 from repomedic.models import AnalyzerResult, Category, Finding, Severity
-from repomedic.utils.process import run
+from repomedic.utils.process import run, run_json_tool
 
 
 @register
@@ -23,23 +23,29 @@ class JavaScriptAnalyzer(BaseAnalyzer):
 
     def analyze(self, ctx: ScanContext) -> AnalyzerResult:
         findings: list[Finding] = []
+        skipped: list[str] = []
 
-        # 1. Syntax checks (node --check) for .js/.mjs/.cjs files
+        # 1. Syntax checks (node --check parses only, never executes)
         findings.extend(self._check_syntax(ctx))
 
-        # 2. ESLint linting
-        findings.extend(self._run_eslint(ctx))
+        # ESLint loads the repo's own eslint.config.js, and npx resolves
+        # repo-controlled node_modules/.bin — code execution by scan.
+        if ctx.allow_exec:
+            # 2. ESLint linting
+            findings.extend(self._run_eslint(ctx))
 
-        # 3. TypeScript type checking
-        findings.extend(self._run_tsc(ctx))
+            # 3. TypeScript type checking
+            findings.extend(self._run_tsc(ctx))
 
-        # 4. npm audit for vulnerabilities
-        findings.extend(self._run_npm_audit(ctx))
+            # 4. npm audit for vulnerabilities
+            findings.extend(self._run_npm_audit(ctx))
+        else:
+            skipped += ["eslint", "tsc", "npm-audit"]
 
-        # 5. Dependency presence analysis
+        # 5. Dependency presence analysis (pure file checks)
         findings.extend(self._check_dependencies(ctx))
 
-        return AnalyzerResult(analyzer=self.name, findings=findings)
+        return AnalyzerResult(analyzer=self.name, findings=findings, skipped_checks=skipped)
 
     def _check_syntax(self, ctx: ScanContext) -> list[Finding]:
         """Run node --check on JavaScript files to detect syntax errors."""
@@ -52,7 +58,7 @@ class JavaScriptAnalyzer(BaseAnalyzer):
                 cwd=str(ctx.target),
                 timeout=10,
             )
-            if result.returncode != 0 and result.stderr:
+            if result.ran and not result.ok and result.stderr:
                 # Parse the error message
                 error_msg = result.stderr.strip()
                 line_num = None
@@ -69,10 +75,7 @@ class JavaScriptAnalyzer(BaseAnalyzer):
                     if line_num:
                         break
 
-                try:
-                    rel = str(js_file.relative_to(ctx.target))
-                except ValueError:
-                    rel = str(js_file)
+                rel = self._rel(js_file, ctx)
 
                 findings.append(
                     Finding(
@@ -91,30 +94,20 @@ class JavaScriptAnalyzer(BaseAnalyzer):
 
     def _run_eslint(self, ctx: ScanContext) -> list[Finding]:
         """Run ESLint if available."""
-        result = run(
+        data, _result = run_json_tool(
             ["npx", "--no-install", "eslint", "--format", "json", str(ctx.target)],
             cwd=str(ctx.target),
             timeout=60,
         )
-
-        if result.returncode < 0:
-            return []  # eslint not available
-
-        try:
-            data = json.loads(result.stdout) if result.stdout.strip() else []
-        except json.JSONDecodeError:
-            return []
+        if not isinstance(data, list):
+            return []  # eslint not available or no JSON
 
         findings = []
         for file_result in data:
-            filepath = file_result.get("filePath", "")
-            try:
-                rel = str(Path(filepath).relative_to(ctx.target))
-            except ValueError:
-                rel = filepath
+            rel = self._rel(Path(file_result.get("filePath", "")), ctx)
 
             for msg in file_result.get("messages", []):
-                severity = Severity.error if msg.get("severity", 1) == 2 else Severity.warning
+                severity = map_severity("eslint", msg.get("severity", 1))
                 findings.append(
                     Finding(
                         category=Category.static_analysis,
@@ -143,7 +136,7 @@ class JavaScriptAnalyzer(BaseAnalyzer):
             timeout=60,
         )
 
-        if result.returncode < 0 or result.returncode == 0:
+        if not result.ran or result.ok:
             return []  # not available or no errors
 
         findings = []
@@ -157,10 +150,7 @@ class JavaScriptAnalyzer(BaseAnalyzer):
             match = re.match(r"(.+?)\((\d+),(\d+)\):\s+(error|warning)\s+(TS\d+):\s+(.+)", line)
             if match:
                 filepath, line_no, col, level, code, message = match.groups()
-                try:
-                    rel = str(Path(filepath).relative_to(ctx.target))
-                except ValueError:
-                    rel = filepath
+                rel = self._rel(Path(filepath), ctx)
 
                 findings.append(
                     Finding(
@@ -181,7 +171,7 @@ class JavaScriptAnalyzer(BaseAnalyzer):
 
     def _check_dependencies(self, ctx: ScanContext) -> list[Finding]:
         """Check if package.json dependencies are installed."""
-        findings = []
+        findings: list[Finding] = []
         pkg_json = ctx.target / "package.json"
         if not pkg_json.is_file():
             return findings
@@ -236,30 +226,19 @@ class JavaScriptAnalyzer(BaseAnalyzer):
         if not (ctx.target / "package.json").is_file():
             return []
 
-        result = run(
+        data, _result = run_json_tool(
             ["npm", "audit", "--json"],
             cwd=str(ctx.target),
             timeout=60,
         )
-
-        if result.returncode < 0:
-            return []  # npm not installed
-
-        try:
-            data = json.loads(result.stdout) if result.stdout.strip() else {}
-        except json.JSONDecodeError:
-            return []
+        if not isinstance(data, dict):
+            return []  # npm not installed or no JSON
 
         findings = []
         vulns = data.get("vulnerabilities", {})
         for pkg_name, details in vulns.items():
             sev_str = details.get("severity", "moderate").lower()
-            if sev_str in ("high", "critical"):
-                severity = Severity.error
-            elif sev_str == "moderate":
-                severity = Severity.warning
-            else:
-                severity = Severity.info
+            severity = map_severity("npm_audit", sev_str, Severity.info)
 
             findings.append(
                 Finding(

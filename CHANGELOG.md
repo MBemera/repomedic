@@ -1,5 +1,191 @@
 # Changelog
 
+## 0.7.3 (2026-07-11)
+
+### Fixed
+- Declared `click` as a direct dependency: `cli.py` imports it for the menu
+  dispatcher, and relying on it arriving transitively broke clean wheel
+  installs (caught by the CI dogfood and action-selftest gates).
+
+### Security
+- Raised the `mcp` extra floor to 1.23.0, which fixes PYSEC-2026-1617
+  (caught by the CI dependency-audit gate).
+- Relaxed the `jsonschema` floor to 4.25: the 4.26 floor conflicted with
+  semgrep's `jsonschema~=4.25.1` pin, forcing pip to backtrack to ancient
+  semgrep releases whose transitive protobuf carried PYSEC-2026-1805 and
+  whose CLI still imported `pkg_resources`.
+
+## 0.7.2 (2026-07-11)
+
+### Changed
+- Restyled the scan progress animation: a green pulse-blip spinner and
+  stethoscope-branded bar replace the default braille-dots spinner.
+
+## 0.7.1 (2026-07-11)
+
+### Changed
+- Scans now show live per-analyzer progress instead of a silent wait: rich
+  output gets a spinner and progress bar naming the analyzers currently
+  running; json/markdown/sarif output gets one tick line per finished
+  analyzer on stderr, so stdout stays pure for machine consumers.
+
+## 0.7.0 (2026-07-11)
+
+### Added
+- Interactive startup menu: bare `repomedic` on a terminal (or `repomedic
+  menu` anywhere) opens a launcher for scan, sniff, agent handoff, fix
+  preview, debug, doctor, and selfcheck. Piped and scripted invocations are
+  unchanged — agents and CI never see a prompt.
+- "Fix with coding agent" handoff: scans, writes `repomedic-fixes.md`, and
+  launches the coding-agent CLI on it after an explicit y/N confirmation.
+  The agent gets a short constant prompt pointing at the report file, so
+  handoff token cost does not grow with the number of findings. Defaults to
+  `claude`; override with the `REPOMEDIC_AGENT` environment variable (read
+  from the user's environment only — never from the scanned repo's config).
+
+## 0.6.0 (2026-07-11)
+
+Validation and verification release: RepoMedic now measures analyzer accuracy,
+checks its installed-package integrity, and continuously exercises its output
+and security contracts.
+
+### Added
+- A validated ground-truth corpus covering all 13 analyzers plus a clean-project
+  false-positive control, with per-analyzer precision and recall thresholds.
+- `python -m vv.scorer`, which prints a deterministic threshold table and offers
+  strict mode for CI environments where every declared toolchain is required.
+- Contract tests for schemas, exit codes, stdout purity, and fingerprint-v2
+  stability, plus adversarial tests for injection, redaction, containment,
+  bounded file handling, subprocess statuses, and debugger locals.
+- `repomedic selfcheck` with rich and JSON output for analyzer imports,
+  environment basics, a bundled pipeline fixture, schemas, rendering safety,
+  and optional-extra status. Its schema is available through `repomedic schema`.
+
+### Changed
+- CI now includes a full toolchain leg, a 75% coverage floor, corpus threshold
+  reporting as an artifact, dependency auditing, and built-wheel selfcheck and
+  no-exec dogfood gates.
+- The package version is now `0.6.0`; V&V sources remain repository-only while
+  the bounded selfcheck fixture ships in the wheel.
+
+### Fixed
+- Gitleaks and semgrep results now pass through the same ignore rules as file
+  discovery, so `exclude` config and test-directory skipping apply even when
+  those tools are installed.
+
+### Security
+- Runtime corpus fixtures execute only with explicit case permission, bounded
+  timeouts, contained paths, and an isolated allowlisted environment.
+- Markdown refuses binary or invalid-UTF snippet sources. Secret findings expose
+  the same stable masked handle in JSON, Markdown, and SARIF while withholding
+  the raw line everywhere.
+- Composite-action inputs cross the shell boundary through environment variables,
+  and external CI actions are pinned to official release commits.
+
+## 0.5.0 (2026-07-10)
+
+Debugger integration release: RepoMedic can capture Python crash state
+headlessly and surface scans and debugging workflows in VS Code.
+
+### Added
+- Headless, stdlib-only DAP client with bounded messages, request correlation,
+  event queues, wall-clock deadlines, and fail-closed protocol validation.
+- Python crash capture through loopback-only `debugpy`, including bounded
+  frames, depth-one locals, output tails, secret redaction, and process-group
+  cleanup on timeout.
+- `repomedic debug SCRIPT [ARGS…]` and `repomedic run --debug`, with JSON,
+  rich, and markdown output plus `--timeout`, `--max-frames`, and `--max-vars`.
+- `RUN-004` debugger findings anchored at the deepest user frame. JSON carries
+  structured debug metadata; markdown quarantines it in a dynamic fenced block.
+- Development VS Code extension with workspace scans in the Problems panel,
+  health-score status, Python debugging, crash-state capture, diagnostic code
+  actions, and commands to clear diagnostics.
+- Pure TypeScript report mapping and bounded process-argument helpers with Node
+  unit tests, plus a Node.js 22 CI job that compiles, tests, and audits the
+  extension.
+
+### Security
+- The extension requires Workspace Trust, rejects virtual workspaces, and
+  defaults scans to `--no-exec` so repo-controlled tools are not executed
+  without an explicit developer choice.
+- Executable paths and extra arguments are machine-scoped, validated, and
+  passed without a shell. Scan time, output, arguments, and diagnostic counts
+  are bounded before data reaches the editor.
+
+### Fixed
+- Runtime debug fallback no longer risks executing a clean, failed, or timed-out
+  script twice when debugger capture returns no exception.
+- Runtime stderr is redacted before traceback findings or metadata are created.
+- CLI tests explicitly separate stderr from stdout across supported Typer/Click
+  versions, preserving the machine-output contract in the test harness.
+
+## 0.3.0 (2026-07-10)
+
+Hardening release: RepoMedic is now safe to point at untrusted repos, and
+its reports are safe to feed to agents. Report schema bumps to **3**.
+
+**Schema policy** (applies from here on): `schema_version` bumps only on
+removed/renamed fields or semantics changes; additive fields never bump.
+Non-scan command payloads (doctor/explain/fix/list-analyzers) carry their
+own independent `schema_version` (currently 1).
+
+### Security
+- **Trust model**: new `--exec/--no-exec` gates checks that execute
+  repo-controlled code (`cargo check`/`clippy`, `go build`/`vet`/
+  `govulncheck`, `npx eslint`/`tsc`, `npm audit`). Local paths default
+  `--exec`; GitHub-URL targets default `--no-exec`. Skipped checks are
+  reported per analyzer (`skipped_checks`), in the markdown "Analyzer
+  notes" section, and as `exec: allowed|disabled` in the front matter.
+  Deliberately not configurable from the scanned repo's own config.
+- **Secret redaction**: detected secret values are masked everywhere
+  (prefix + hash handle + length). Raw gitleaks matches are no longer
+  stored in finding metadata, and snippets are withheld for
+  secret-bearing findings — `--output json` and the fix report no longer
+  print secrets verbatim.
+- **Report sanitization**: finding titles/descriptions/suggestions are
+  neutralized before rendering (headings can't be forged, fences can't be
+  closed from inside, the YAML front matter can't be broken). The agent
+  instructions now state that fenced content is untrusted repo data. The
+  rich TUI escapes repo-controlled text so it can't inject styling.
+- **Scan containment**: file discovery never follows directory symlinks
+  and drops file symlinks that resolve outside the scan root; snippet
+  rendering enforces the same rule. Git inspection forces
+  `core.fsmonitor=false` and an empty `hooksPath` so a repo's own
+  `.git/config` can't execute commands during `git status`.
+- **Subprocess isolation**: child processes get an allowlisted
+  environment by default (`AWS_*`, `GITHUB_TOKEN`, etc. never reach
+  repo tools); output capture is capped at 1 MiB/stream; timeouts kill
+  the whole process group. `repomedic run` keeps the full environment
+  (the user asked to run their own script). Clones pass `--` and
+  `GIT_TERMINAL_PROMPT=0`.
+
+### Changed
+- **Fingerprints (v2)**: `RM-…` IDs now hash the flagged line's content
+  plus an occurrence index instead of the line number — inserting or
+  deleting lines above a finding no longer changes its ID. Editing the
+  flagged line does (it's a different finding).
+- **Process results**: tool invocations report a distinct status
+  (`ok`/`not_found`/`timed_out`/`failed_to_start`) instead of sentinel
+  return codes that collided with signal deaths. A linter killed by a
+  signal is no longer misread as "not installed" (which also fixes a
+  fake "JavaScript syntax error" when node was missing and a fake
+  "Detached HEAD" when git was missing).
+- **Per-analyzer timeout**: `--analyzer-timeout` (default 120s; config
+  key `analyzer_timeout`) abandons a hung analyzer instead of hanging
+  the scan.
+- **Typed command payloads**: `doctor`, `explain`, `fix`, and
+  `list-analyzers` JSON output are now versioned pydantic models
+  (`schema_version: 1`) instead of ad-hoc dicts. `fix -o json` returns
+  `{target, dry_run, actions: […]}`; `list-analyzers -o json` returns
+  `{analyzers: […]}`.
+- Scan orchestration extracted into an embeddable service
+  (`repomedic.core.service.run_scan`) that never prints, prompts, or
+  exits — reusable by MCP servers, editors, and test harnesses.
+- `--changed`/`--since` parse `git status -z` (quoted/unicode paths
+  survive); front-matter string values are JSON-quoted.
+- Package ships `py.typed`; CI (ruff, mypy, pytest on 3.11–3.13) runs on
+  every push.
+
 ## 0.2.0 (2026-07-07)
 
 Agent-first refactor: repomedic is now designed to be operated by AI coding

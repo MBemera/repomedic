@@ -9,6 +9,7 @@ from repomedic.analyzers.base import BaseAnalyzer
 from repomedic.core.context import ScanContext
 from repomedic.core.languages import language_for_path
 from repomedic.models import AnalyzerResult, Category, Finding, Severity
+from repomedic.utils.fs import read_text_capped
 
 LARGE_FILE_WARN_BYTES = 10 * 1024 * 1024  # 10 MB
 LARGE_FILE_ERROR_BYTES = 50 * 1024 * 1024  # 50 MB
@@ -61,9 +62,8 @@ class HygieneAnalyzer(BaseAnalyzer):
         for f in ctx.files:
             if not language_for_path(f):
                 continue  # only source files
-            try:
-                content = f.read_text(encoding="utf-8", errors="replace")
-            except OSError:
+            content = read_text_capped(f)
+            if content is None:
                 continue
             count = len(TODO_RE.findall(content))
             if count:

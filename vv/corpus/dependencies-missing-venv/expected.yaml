@@ -1,0 +1,14 @@
+schema_version: 1
+analyzer: dependencies
+requires: []
+allow_exec: false
+initialize_git: false
+expect:
+  - analyzer: dependencies
+    code: DEP-001
+    file: null
+    lines: null
+    severity: info
+forbid:
+  - DEP-002
+allow_extra: false

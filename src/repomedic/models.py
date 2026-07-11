@@ -6,9 +6,30 @@ import hashlib
 from datetime import datetime, timezone
 from enum import Enum
 
-from pydantic import BaseModel, Field, computed_field
+from pydantic import BaseModel, Field, model_validator
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
+
+FINGERPRINT_ALGO_VERSION = 2
+
+
+def compute_fingerprint(code: str, file_path: str | None, content: str, occurrence: int) -> str:
+    """Stable finding ID: hash of what the finding IS, not where its line sits.
+
+    v2 hashes the flagged line's normalized *content* plus an occurrence
+    index instead of the line number, so inserting or deleting lines above
+    a finding no longer changes its ID (the v1 failure mode that broke
+    cross-run tracking). Editing the flagged line itself changes the ID,
+    which is correct — it is a different finding. The algorithm version is
+    part of the hash input so a future v3 can never collide with v2.
+    """
+    raw = f"{FINGERPRINT_ALGO_VERSION}|{code}|{file_path or ''}|{content}|{occurrence}"
+    return "RM-" + hashlib.sha1(raw.encode("utf-8")).hexdigest()[:10]
+
+
+def normalize_line(text: str) -> str:
+    """Whitespace-collapse and cap a source line for fingerprint hashing."""
+    return " ".join(text.split())[:200]
 
 
 class Severity(str, Enum):
@@ -51,13 +72,20 @@ class Finding(BaseModel):
         description="Programming language this finding relates to (per the language registry), or None for language-agnostic",
     )
     metadata: dict = Field(default_factory=dict)
+    fingerprint: str = Field(
+        default="",
+        description="Stable ID (RM-…) for referencing/deduplicating this finding across runs",
+    )
 
-    @computed_field  # type: ignore[prop-decorator]
-    @property
-    def fingerprint(self) -> str:
-        """Stable short ID for referencing/deduplicating this finding across runs."""
-        raw = f"{self.code}|{self.file_path or ''}|{self.line or 0}|{self.title}|{self.description[:80]}"
-        return "RM-" + hashlib.sha1(raw.encode("utf-8")).hexdigest()[:8]
+    @model_validator(mode="after")
+    def _default_fingerprint(self) -> Finding:
+        # The scanner assigns content-aware fingerprints in one pass
+        # (core/fingerprint.py). This fallback keeps directly-constructed
+        # findings identifiable with the same algorithm.
+        if not self.fingerprint:
+            content = normalize_line(f"{self.title}|{self.description[:80]}")
+            self.fingerprint = compute_fingerprint(self.code, self.file_path, content, 0)
+        return self
 
 
 class AnalyzerResult(BaseModel):
@@ -67,6 +95,10 @@ class AnalyzerResult(BaseModel):
     findings: list[Finding] = Field(default_factory=list)
     error: str | None = None
     elapsed_seconds: float = 0.0
+    skipped_checks: list[str] = Field(
+        default_factory=list,
+        description="Checks this analyzer skipped (e.g. code-executing checks under --no-exec)",
+    )
 
 
 class ReportSummary(BaseModel):
@@ -82,6 +114,10 @@ class ReportSummary(BaseModel):
         default=0,
         description="Findings dropped by --max-findings truncation (counts still reflect the full scan)",
     )
+    suppressed_findings: int = Field(
+        default=0,
+        description="Findings removed by the baseline file or inline `repomedic: ignore` directives",
+    )
     health_score: int = 100
     health_grade: str = "A"
 
@@ -93,6 +129,10 @@ class ScanReport(BaseModel):
     target: str
     timestamp: str = Field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
+    exec_allowed: bool = Field(
+        default=True,
+        description="Whether code-executing checks (cargo/go build, eslint, ...) were permitted",
     )
     languages: dict[str, int] = Field(
         default_factory=dict,
@@ -115,6 +155,7 @@ class ScanReport(BaseModel):
         warnings = sum(1 for f in all_findings if f.severity == Severity.warning)
         infos = sum(1 for f in all_findings if f.severity == Severity.info)
         omitted = self.summary.omitted_findings
+        suppressed = self.summary.suppressed_findings
         score, grade = _compute_score(errors, warnings, infos)
         self.summary = ReportSummary(
             total_findings=len(all_findings),
@@ -124,6 +165,7 @@ class ScanReport(BaseModel):
             analyzers_run=len(self.results),
             analyzers_failed=sum(1 for r in self.results if r.error),
             omitted_findings=omitted,
+            suppressed_findings=suppressed,
             health_score=score,
             health_grade=grade,
         )

@@ -1,0 +1,72 @@
+name: "RepoMedic Scan"
+description: >-
+  Scan a repository with RepoMedic, emit SARIF for GitHub code scanning,
+  and fail the job when findings cross the fail-on threshold.
+author: "MBemera"
+
+inputs:
+  path:
+    description: "Path to scan, relative to the workspace"
+    default: "."
+  fail-on:
+    description: "Severity that fails the job: error, warning, any, never"
+    default: "error"
+  sarif-file:
+    description: "Where to write the SARIF report"
+    default: "repomedic.sarif"
+  upload-sarif:
+    description: "Upload the SARIF to GitHub code scanning (needs security-events: write)"
+    default: "true"
+  python-version:
+    description: "Python version used to run RepoMedic"
+    default: "3.12"
+
+outputs:
+  exit-code:
+    description: "RepoMedic exit code: 0 clean, 1 findings at/above fail-on, 2 usage error"
+    value: ${{ steps.scan.outputs.exit-code }}
+  sarif-file:
+    description: "Path of the SARIF report that was written"
+    value: ${{ inputs.sarif-file }}
+
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install RepoMedic
+      shell: bash
+      run: pip install --quiet "${{ github.action_path }}"
+
+    - name: Scan (SARIF to file, exit code captured)
+      id: scan
+      shell: bash
+      env:
+        REPOMEDIC_INPUT_PATH: ${{ inputs.path }}
+        REPOMEDIC_INPUT_FAIL_ON: ${{ inputs.fail-on }}
+        REPOMEDIC_INPUT_SARIF_FILE: ${{ inputs.sarif-file }}
+      run: |
+        set +e
+        repomedic sniff "$REPOMEDIC_INPUT_PATH" --output sarif --fail-on "$REPOMEDIC_INPUT_FAIL_ON" > "$REPOMEDIC_INPUT_SARIF_FILE"
+        code=$?
+        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+        echo "RepoMedic exit code: $code"
+
+    - name: Upload SARIF to code scanning
+      if: ${{ inputs.upload-sarif == 'true' }}
+      uses: github/codeql-action/upload-sarif@99df26d4f13ea111d4ec1a7dddef6063f76b97e9 # v4
+      with:
+        sarif_file: ${{ inputs.sarif-file }}
+
+    - name: Propagate exit code
+      shell: bash
+      env:
+        REPOMEDIC_EXIT_CODE: ${{ steps.scan.outputs.exit-code }}
+        REPOMEDIC_INPUT_FAIL_ON: ${{ inputs.fail-on }}
+      run: |
+        if [ "$REPOMEDIC_EXIT_CODE" != "0" ]; then
+          echo "Failing job: RepoMedic exited $REPOMEDIC_EXIT_CODE (fail-on: $REPOMEDIC_INPUT_FAIL_ON)"
+          exit "$REPOMEDIC_EXIT_CODE"
+        fi

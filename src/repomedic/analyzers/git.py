@@ -8,7 +8,8 @@ from repomedic.analyzers import register
 from repomedic.analyzers.base import BaseAnalyzer
 from repomedic.core.context import ScanContext
 from repomedic.models import AnalyzerResult, Category, Finding, Severity
-from repomedic.utils.process import run
+from repomedic.utils.fs import read_text_capped
+from repomedic.utils.vcs import run_git
 
 MERGE_CONFLICT_RE = re.compile(r"^<{7}\s", re.MULTILINE)
 
@@ -33,8 +34,8 @@ class GitAnalyzer(BaseAnalyzer):
         return AnalyzerResult(analyzer=self.name, findings=findings)
 
     def _check_status(self, cwd: str) -> list[Finding]:
-        result = run(["git", "status", "--porcelain"], cwd=cwd)
-        if result.returncode != 0:
+        result = run_git(["status", "--porcelain"], cwd=cwd, timeout=15)
+        if not result.ok:
             return []
 
         findings = []
@@ -78,15 +79,11 @@ class GitAnalyzer(BaseAnalyzer):
         for fpath in ctx.files:
             if fpath.suffix in (".pyc", ".pyo", ".so", ".dll", ".exe", ".bin"):
                 continue
-            try:
-                content = fpath.read_text(encoding="utf-8", errors="replace")
-            except Exception:
+            content = read_text_capped(fpath)
+            if content is None:
                 continue
             if MERGE_CONFLICT_RE.search(content):
-                try:
-                    rel = str(fpath.relative_to(ctx.target))
-                except ValueError:
-                    rel = str(fpath)
+                rel = self._rel(fpath, ctx)
                 findings.append(
                     Finding(
                         category=Category.git_health,
@@ -101,8 +98,8 @@ class GitAnalyzer(BaseAnalyzer):
         return findings
 
     def _check_head(self, cwd: str) -> list[Finding]:
-        result = run(["git", "symbolic-ref", "HEAD"], cwd=cwd)
-        if result.returncode != 0:
+        result = run_git(["symbolic-ref", "HEAD"], cwd=cwd, timeout=10)
+        if result.ran and result.returncode != 0:
             return [
                 Finding(
                     category=Category.git_health,

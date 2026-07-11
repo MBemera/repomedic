@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 
-from repomedic.commands.doctor import _check_tool, run_doctor
+from repomedic.commands.doctor import _check_tool, collect_doctor
 
 
 def test_check_tool_found():
@@ -18,27 +18,27 @@ def test_check_tool_not_found():
     assert "not found" in version
 
 
-def test_run_doctor_basic(tmp_path):
+def test_collect_doctor_basic(tmp_path):
     # Create a minimal project
     (tmp_path / "pyproject.toml").write_text('[project]\nname = "test"\n')
-    result = run_doctor(tmp_path)
-    assert "checks" in result
-    assert "fix_commands" in result
-    assert len(result["checks"]) > 0
+    result = collect_doctor(tmp_path)
+    assert result.schema_version == 1
+    assert len(result.checks) > 0
+    assert any(check.name == "debugpy" for check in result.checks)
 
 
-def test_run_doctor_detects_missing_venv(tmp_path):
+def test_collect_doctor_detects_missing_venv(tmp_path):
     (tmp_path / "pyproject.toml").write_text('[project]\nname = "test"\n')
-    result = run_doctor(tmp_path)
-    venv_checks = [c for c in result["checks"] if "Virtual env" in c[0]]
+    result = collect_doctor(tmp_path)
+    venv_checks = [c for c in result.checks if "Virtual env" in c.name]
     assert len(venv_checks) == 1
-    assert venv_checks[0][2] == "MISSING"
+    assert venv_checks[0].status == "MISSING"
 
 
-def test_run_doctor_detects_venv(tmp_path):
+def test_collect_doctor_detects_venv(tmp_path):
     (tmp_path / "pyproject.toml").write_text('[project]\nname = "test"\n')
     (tmp_path / ".venv").mkdir()
-    result = run_doctor(tmp_path)
-    venv_checks = [c for c in result["checks"] if "Virtual env" in c[0]]
+    result = collect_doctor(tmp_path)
+    venv_checks = [c for c in result.checks if "Virtual env" in c.name]
     assert len(venv_checks) == 1
-    assert venv_checks[0][2] == "OK"
+    assert venv_checks[0].status == "OK"

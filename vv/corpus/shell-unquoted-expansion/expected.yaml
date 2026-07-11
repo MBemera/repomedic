@@ -1,0 +1,16 @@
+schema_version: 1
+analyzer: shell
+requires:
+  - shellcheck
+allow_exec: false
+initialize_git: false
+expect:
+  - analyzer: shell
+    code: SH-SC2086
+    file: check.sh
+    lines: [3, 3]
+    severity: info
+forbid:
+  - SH-001
+  - SH-SC2154
+allow_extra: false

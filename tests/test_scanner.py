@@ -105,6 +105,41 @@ def test_scan_extra_ignore_dirs(make_project):
     assert report_ignored.summary.errors == 0
 
 
+def test_scan_emits_analyzer_progress_events(make_project):
+    project = make_project({
+        "app.py": "x = 1\n",
+        "config.json": "{}\n",
+    })
+    events: list[tuple[str, str, int, int]] = []
+
+    report = Scanner().scan(
+        str(project), on_analyzer=lambda *event: events.append(event)
+    )
+
+    total = len(report.results)
+    assert total > 1  # the parallel path is the one that matters
+    starts = [e for e in events if e[0] == "start"]
+    finishes = [e for e in events if e[0] in ("done", "timeout")]
+    assert len(starts) == total
+    assert len(finishes) == total
+    assert {e[1] for e in starts} == {r.analyzer for r in report.results}
+    assert all(e[3] == total for e in events)
+    assert finishes[-1][2] == total  # completed count reaches the total
+
+
+def test_scan_emits_events_for_single_analyzer(make_project):
+    project = make_project({"app.py": "x = 1\n"})
+    events: list[tuple[str, str, int, int]] = []
+
+    Scanner().scan(
+        str(project),
+        analyzer_names=["static"],
+        on_analyzer=lambda *event: events.append(event),
+    )
+
+    assert events == [("start", "static", 0, 1), ("done", "static", 1, 1)]
+
+
 def test_finding_fingerprints_stable_and_serialized(fixtures_dir):
     import json
 
@@ -119,3 +154,48 @@ def test_finding_fingerprints_stable_and_serialized(fixtures_dir):
     data = json.loads(r1.model_dump_json())
     serialized = [f["fingerprint"] for r in data["results"] for f in r["findings"]]
     assert serialized == fp1  # computed field lands in JSON
+
+
+def test_analyzer_timeout_abandons_slow_analyzer(make_project, monkeypatch):
+    """A hung analyzer becomes an error entry; the scan still completes."""
+    import time as time_mod
+
+    from repomedic.analyzers.base import BaseAnalyzer
+    from repomedic.core import scanner as scanner_mod
+    from repomedic.models import AnalyzerResult
+
+    class SlowAnalyzer(BaseAnalyzer):
+        name = "slow-fake"
+        description = "hangs"
+
+        def is_applicable(self, ctx):
+            return True
+
+        def analyze(self, ctx):
+            time_mod.sleep(5)
+            return AnalyzerResult(analyzer=self.name)
+
+    class FastAnalyzer(BaseAnalyzer):
+        name = "fast-fake"
+        description = "returns instantly"
+
+        def is_applicable(self, ctx):
+            return True
+
+        def analyze(self, ctx):
+            return AnalyzerResult(analyzer=self.name)
+
+    monkeypatch.setattr(
+        scanner_mod, "get_all_analyzers", lambda: [SlowAnalyzer(), FastAnalyzer()]
+    )
+    project = make_project({"app.py": "x = 1\n"})
+
+    start = time_mod.monotonic()
+    report = Scanner().scan(str(project), analyzer_timeout=0.5)
+    elapsed = time_mod.monotonic() - start
+
+    assert elapsed < 4  # did not wait for the hung analyzer
+    by_name = {r.analyzer: r for r in report.results}
+    assert "Timed out" in (by_name["slow-fake"].error or "")
+    assert by_name["fast-fake"].error is None
+    assert report.summary.analyzers_failed == 1
