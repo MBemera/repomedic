@@ -57,6 +57,7 @@ Language detection covers 30+ languages (Python, JS/TS, Go, Rust, Java, Kotlin, 
 | `repomedic run script.py` | Run a script (any supported language) and analyze the failure |
 | `repomedic debug script.py` | Capture an uncaught Python exception with bounded frames and redacted locals |
 | `repomedic doctor` | Check the dev environment: interpreters, toolchains, project dependencies |
+| `repomedic selfcheck` | Verify installed-package integrity, schemas, rendering safety, and the bundled scan pipeline |
 | `repomedic explain` | Describe a project: type, languages, dependencies, structure |
 | `repomedic fix [--dry-run]` | Auto-fix safe issues (ruff, .gitignore, .env.example) |
 | `repomedic list-analyzers` | List available analyzers |
@@ -109,6 +110,9 @@ repomedic debug path/to/script.py --timeout 60 -o json
 
 # Use the same debugger path through the multi-language run command
 repomedic run path/to/script.py --debug -o markdown
+
+# Verify the installed RepoMedic package and emit a machine-readable result
+repomedic selfcheck -o json
 ```
 
 ## VS Code Extension
@@ -250,6 +254,30 @@ editors/vscode/
 ├── src/report.ts          # Pure report-to-diagnostic mapping
 └── src/runner.ts          # Bounded, shell-free RepoMedic process execution
 ```
+
+## Validation and verification
+
+`repomedic selfcheck` is the installed-package smoke test. It checks all 13
+analyzer imports, isolated Python and Git availability, a bundled no-exec scan,
+the exported schemas, markdown rendering safety, and optional extras. It exits
+`0` only when every required check passes; `extras-status` is informational.
+
+The full V&V framework lives in a source checkout under `vv/` and `tests/` and
+is intentionally excluded from the wheel:
+
+```bash
+repomedic selfcheck -o json          # installed-package integrity
+pytest -q -m "not toolchain"         # portable suite
+pytest -q tests/contract             # output and exit-code contracts
+pytest -q -m adversarial             # hostile-input and boundary tests
+pytest -q -m corpus                  # ground-truth cases; unavailable tools skip
+python -m vv.scorer                  # precision/recall threshold table
+python -m vv.scorer --strict         # fail when a declared toolchain is missing
+```
+
+CI also runs strict corpus scoring with the declared external toolchains,
+enforces the 75% coverage floor, audits dependencies, and dogfoods the built
+wheel with `selfcheck` and a no-exec repository scan.
 
 ## Development
 

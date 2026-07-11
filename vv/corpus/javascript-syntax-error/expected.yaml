@@ -1,0 +1,16 @@
+schema_version: 1
+analyzer: javascript
+requires:
+  - node
+allow_exec: false
+initialize_git: false
+expect:
+  - analyzer: javascript
+    code: JS-001
+    file: broken.js
+    lines: [1, 1]
+    severity: error
+forbid:
+  - JS-DEP-001
+  - JS-DEP-002
+allow_extra: false

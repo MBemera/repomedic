@@ -1,0 +1,15 @@
+schema_version: 1
+analyzer: semgrep
+requires:
+  - semgrep
+allow_exec: false
+initialize_git: false
+expect:
+  - analyzer: semgrep
+    code: python.lang.security.audit.eval-detected.eval-detected
+    file: app.py
+    lines: [2, 2]
+    severity: warning
+forbid:
+  - SEMGREP-002
+allow_extra: false

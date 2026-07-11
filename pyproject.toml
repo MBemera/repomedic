@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "repomedic"
-version = "0.5.0"
+version = "0.6.0"
 description = "Agent-first repo bug sniffer — diagnose issues in folders and repos, hand the fixes to a coding agent"
 requires-python = ">=3.11"
 dependencies = [
@@ -12,6 +12,7 @@ dependencies = [
     "pydantic>=2.0",
     "rich>=13.0",
     "pyyaml>=6.0",
+    "jsonschema>=4.26,<5",
 ]
 
 [project.optional-dependencies]
@@ -20,6 +21,7 @@ dev = [
     "ruff>=0.4",
     "mypy>=1.10",
     "debugpy>=1.8.21,<2",
+    "pytest-cov>=7.1,<8",
 ]
 # Optional analysis tools that unlock deeper findings
 tools = [
@@ -43,12 +45,26 @@ packages = ["src/repomedic"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "corpus: ground-truth validation corpus cases",
+    "adversarial: security and untrusted-input regression cases",
+    "toolchain: corpus cases that require external analysis toolchains",
+]
 
 [tool.ruff]
 target-version = "py311"
-extend-exclude = ["tests/fixtures"]
+extend-exclude = ["tests/fixtures", "vv/corpus"]
 
 [tool.mypy]
 python_version = "3.11"
 ignore_missing_imports = true
 check_untyped_defs = true
+exclude = ["^vv/corpus/"]
+
+[tool.coverage.run]
+branch = true
+source = ["repomedic"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true

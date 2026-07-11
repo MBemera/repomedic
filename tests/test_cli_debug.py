@@ -7,11 +7,11 @@ import time
 from pathlib import Path
 
 import pytest
-from typer.testing import CliRunner
 
 from repomedic.cli import app
+from tests.cli_runner import create_cli_runner
 
-runner = CliRunner(mix_stderr=False)
+runner = create_cli_runner()
 
 
 def test_debug_command_clean_script_exits_zero(tmp_path: Path) -> None:

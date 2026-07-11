@@ -6,9 +6,9 @@ structured pydantic dumps; only `fix_report` returns markdown (the
 agent-facing fix report is markdown by design).
 
 Security posture:
-- `allow_exec` defaults to **False** for every tool — an MCP client may
-  point the server at any path or URL, so code-executing checks require
-  an explicit opt-in per call.
+- Code execution defaults to **False** — an MCP client may point the server
+  at any path or URL, so executable checks require an explicit opt-in.
+- `run_script` always uses an isolated, allowlisted subprocess environment.
 - `fix_preview` is hard-wired to dry-run; the server never mutates a
   repo except `baseline_write`, whose sole write is the baseline file.
 - FastMCP owns stdout (the protocol channel); progress goes to stderr
@@ -107,21 +107,32 @@ def fix_report(
         outcome.cleanup()
 
 
-def run_script(script: str, args: list[str] | None = None) -> dict:
+def run_script(
+    script: str,
+    args: list[str] | None = None,
+    allow_exec: bool = False,
+) -> dict:
     """Run one script with its matching interpreter and analyze the failure.
 
-    This executes the script — only point it at code you trust.
+    Pass allow_exec=true only for trusted code. The process receives an
+    isolated, allowlisted environment rather than the MCP server environment.
     """
     from repomedic.analyzers.runtime import RuntimeAnalyzer
     from repomedic.core.postprocess import postprocess_results
     from repomedic.models import ScanReport
+
+    if not allow_exec:
+        raise ValueError("run_script requires allow_exec=true for trusted code")
 
     script_path = Path(script).resolve()
     if not script_path.is_file():
         raise ValueError(f"{script} is not a file")
 
     result = RuntimeAnalyzer().analyze_script(
-        str(script_path), cwd=str(script_path.parent), args=args or []
+        str(script_path),
+        cwd=str(script_path.parent),
+        args=args or [],
+        env_mode="isolated",
     )
     postprocess_results([result], script_path.parent)
     report = ScanReport(target=str(script_path.parent), results=[result])

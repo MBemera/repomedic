@@ -1,0 +1,18 @@
+schema_version: 1
+analyzer: git
+requires:
+  - git
+allow_exec: false
+initialize_git: true
+expect:
+  - analyzer: git
+    code: GIT-003
+    file: conflict.py
+    lines: null
+    severity: error
+forbid:
+  - GIT-001
+  - GIT-002
+  - GIT-004
+  - GIT-005
+allow_extra: false

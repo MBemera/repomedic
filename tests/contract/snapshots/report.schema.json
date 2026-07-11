@@ -1,0 +1,286 @@
+{
+  "$defs": {
+    "AnalyzerResult": {
+      "description": "Result from a single analyzer run.",
+      "properties": {
+        "analyzer": {
+          "title": "Analyzer",
+          "type": "string"
+        },
+        "findings": {
+          "items": {
+            "$ref": "#/$defs/Finding"
+          },
+          "title": "Findings",
+          "type": "array"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "elapsed_seconds": {
+          "default": 0.0,
+          "title": "Elapsed Seconds",
+          "type": "number"
+        },
+        "skipped_checks": {
+          "description": "Checks this analyzer skipped (e.g. code-executing checks under --no-exec)",
+          "items": {
+            "type": "string"
+          },
+          "title": "Skipped Checks",
+          "type": "array"
+        }
+      },
+      "required": [
+        "analyzer"
+      ],
+      "title": "AnalyzerResult",
+      "type": "object"
+    },
+    "Category": {
+      "enum": [
+        "static_analysis",
+        "dependency",
+        "git_health",
+        "config",
+        "runtime",
+        "log_analysis",
+        "security",
+        "hygiene"
+      ],
+      "title": "Category",
+      "type": "string"
+    },
+    "Finding": {
+      "description": "A single diagnostic finding.",
+      "properties": {
+        "category": {
+          "$ref": "#/$defs/Category"
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        },
+        "code": {
+          "description": "Flat code like STATIC-001, GIT-002",
+          "title": "Code",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "file_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "File Path"
+        },
+        "line": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Line"
+        },
+        "column": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Column"
+        },
+        "suggestion": {
+          "default": "",
+          "description": "Actionable fix suggestion — primary value for AI agents",
+          "title": "Suggestion",
+          "type": "string"
+        },
+        "language": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Programming language this finding relates to (per the language registry), or None for language-agnostic",
+          "title": "Language"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "title": "Metadata",
+          "type": "object"
+        },
+        "fingerprint": {
+          "default": "",
+          "description": "Stable ID (RM-…) for referencing/deduplicating this finding across runs",
+          "title": "Fingerprint",
+          "type": "string"
+        }
+      },
+      "required": [
+        "category",
+        "severity",
+        "code",
+        "title",
+        "description"
+      ],
+      "title": "Finding",
+      "type": "object"
+    },
+    "ReportSummary": {
+      "description": "Summary counts for a scan report.",
+      "properties": {
+        "total_findings": {
+          "default": 0,
+          "title": "Total Findings",
+          "type": "integer"
+        },
+        "errors": {
+          "default": 0,
+          "title": "Errors",
+          "type": "integer"
+        },
+        "warnings": {
+          "default": 0,
+          "title": "Warnings",
+          "type": "integer"
+        },
+        "infos": {
+          "default": 0,
+          "title": "Infos",
+          "type": "integer"
+        },
+        "analyzers_run": {
+          "default": 0,
+          "title": "Analyzers Run",
+          "type": "integer"
+        },
+        "analyzers_failed": {
+          "default": 0,
+          "title": "Analyzers Failed",
+          "type": "integer"
+        },
+        "omitted_findings": {
+          "default": 0,
+          "description": "Findings dropped by --max-findings truncation (counts still reflect the full scan)",
+          "title": "Omitted Findings",
+          "type": "integer"
+        },
+        "suppressed_findings": {
+          "default": 0,
+          "description": "Findings removed by the baseline file or inline `repomedic: ignore` directives",
+          "title": "Suppressed Findings",
+          "type": "integer"
+        },
+        "health_score": {
+          "default": 100,
+          "title": "Health Score",
+          "type": "integer"
+        },
+        "health_grade": {
+          "default": "A",
+          "title": "Health Grade",
+          "type": "string"
+        }
+      },
+      "title": "ReportSummary",
+      "type": "object"
+    },
+    "Severity": {
+      "enum": [
+        "error",
+        "warning",
+        "info"
+      ],
+      "title": "Severity",
+      "type": "string"
+    }
+  },
+  "description": "Top-level scan report — the main output of repomedic.",
+  "properties": {
+    "schema_version": {
+      "default": 3,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "target": {
+      "title": "Target",
+      "type": "string"
+    },
+    "timestamp": {
+      "title": "Timestamp",
+      "type": "string"
+    },
+    "exec_allowed": {
+      "default": true,
+      "description": "Whether code-executing checks (cargo/go build, eslint, ...) were permitted",
+      "title": "Exec Allowed",
+      "type": "boolean"
+    },
+    "languages": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "description": "Detected languages -> file counts",
+      "title": "Languages",
+      "type": "object"
+    },
+    "files_scanned": {
+      "default": 0,
+      "title": "Files Scanned",
+      "type": "integer"
+    },
+    "duration_seconds": {
+      "default": 0.0,
+      "title": "Duration Seconds",
+      "type": "number"
+    },
+    "summary": {
+      "$ref": "#/$defs/ReportSummary"
+    },
+    "results": {
+      "items": {
+        "$ref": "#/$defs/AnalyzerResult"
+      },
+      "title": "Results",
+      "type": "array"
+    }
+  },
+  "required": [
+    "target"
+  ],
+  "title": "ScanReport",
+  "type": "object"
+}

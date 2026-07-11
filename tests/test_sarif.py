@@ -6,6 +6,7 @@ import json
 
 from repomedic.models import AnalyzerResult, Category, Finding, ScanReport, Severity
 from repomedic.output.sarif_output import FINGERPRINT_KEY, print_sarif, to_sarif
+from tests.cli_runner import create_cli_runner
 
 
 def _finding(**overrides) -> Finding:
@@ -123,12 +124,10 @@ def test_print_sarif_is_valid_json():
 
 
 def test_cli_scan_output_sarif(make_project):
-    from typer.testing import CliRunner
-
     from repomedic.cli import app
 
     project = make_project({"app.py": "import os\nprint(os.name)\n"})
-    runner = CliRunner(mix_stderr=False)
+    runner = create_cli_runner()
     result = runner.invoke(app, ["scan", str(project), "--output", "sarif"])
 
     assert result.exit_code in (0, 1)

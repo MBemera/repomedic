@@ -24,18 +24,49 @@ block agents parse.
 
 from __future__ import annotations
 
+import html
 import json
 import re
 
 _BACKTICK_RUN = re.compile(r"`+")
+_MARKDOWN_INLINE_SPECIAL = re.compile(r"([\\*_{}\[\]#!|~$])")
 _ELLIPSIS = "…"
+_SAFE_CONTROL_CHARACTERS = frozenset({"\t", "\n", "\r"})
+
+
+def contains_unsafe_control_characters(text: str) -> bool:
+    """Return whether text contains terminal-active C0/C1 controls."""
+    return any(_is_unsafe_control_character(character) for character in text)
+
+
+def neutralize_control_characters(text: str) -> str:
+    """Render terminal-active C0/C1 controls as visible Unicode escapes."""
+    return "".join(
+        _visible_character(character)
+        for character in text
+    )
+
+
+def _is_unsafe_control_character(character: str) -> bool:
+    if character in _SAFE_CONTROL_CHARACTERS:
+        return False
+    codepoint = ord(character)
+    return codepoint < 0x20 or 0x7F <= codepoint <= 0x9F
+
+
+def _visible_character(character: str) -> str:
+    if not _is_unsafe_control_character(character):
+        return character
+    return f"\\u{ord(character):04x}"
 
 
 def sanitize_inline(text: str, max_len: int = 120) -> str:
     """Make untrusted text safe to embed in a single markdown line."""
-    text = " ".join(str(text).split())
+    text = neutralize_control_characters(str(text))
+    text = " ".join(text.split())
     text = text.replace("`", "'")
-    text = text.replace("|", "\\|")
+    text = html.escape(text, quote=False)
+    text = _MARKDOWN_INLINE_SPECIAL.sub(r"\\\1", text)
     if len(text) > max_len:
         text = text[: max_len - 1] + _ELLIPSIS
     return text
@@ -43,7 +74,7 @@ def sanitize_inline(text: str, max_len: int = 120) -> str:
 
 def fenced_block(text: str, info: str = "text", max_len: int = 2000) -> list[str]:
     """Return untrusted multi-line text quarantined inside an unclosable fence."""
-    text = str(text)
+    text = neutralize_control_characters(str(text))
     if len(text) > max_len:
         text = text[: max_len - 1] + _ELLIPSIS
     longest_run = max((len(m.group()) for m in _BACKTICK_RUN.finditer(text)), default=0)
@@ -53,4 +84,7 @@ def fenced_block(text: str, info: str = "text", max_len: int = 2000) -> list[str
 
 def yaml_scalar(value: object) -> str:
     """Encode a value as a single-line YAML-safe scalar (JSON string)."""
-    return json.dumps(str(value), ensure_ascii=False)
+    return json.dumps(
+        neutralize_control_characters(str(value)),
+        ensure_ascii=False,
+    )

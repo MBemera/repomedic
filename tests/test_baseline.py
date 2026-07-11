@@ -15,6 +15,7 @@ from repomedic.core.baseline import (
     write_baseline,
 )
 from repomedic.models import AnalyzerResult, Category, Finding, ScanReport, Severity
+from tests.cli_runner import create_cli_runner
 
 
 def _finding(code: str = "STATIC-001", fingerprint: str = "RM-aaaaaaaaaa") -> Finding:
@@ -135,12 +136,10 @@ def test_scan_explicit_missing_baseline_is_usage_error(make_project):
 
 
 def test_cli_baseline_command_writes_file(make_project):
-    from typer.testing import CliRunner
-
     from repomedic.cli import app
 
     project = make_project({"app.py": "import os\nprint(os.name)\n"})
-    runner = CliRunner(mix_stderr=False)
+    runner = create_cli_runner()
     result = runner.invoke(app, ["baseline", str(project)])
 
     assert result.exit_code == 0

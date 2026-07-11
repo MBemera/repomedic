@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.6.0 (2026-07-11)
+
+Validation and verification release: RepoMedic now measures analyzer accuracy,
+checks its installed-package integrity, and continuously exercises its output
+and security contracts.
+
+### Added
+- A validated ground-truth corpus covering all 13 analyzers plus a clean-project
+  false-positive control, with per-analyzer precision and recall thresholds.
+- `python -m vv.scorer`, which prints a deterministic threshold table and offers
+  strict mode for CI environments where every declared toolchain is required.
+- Contract tests for schemas, exit codes, stdout purity, and fingerprint-v2
+  stability, plus adversarial tests for injection, redaction, containment,
+  bounded file handling, subprocess statuses, and debugger locals.
+- `repomedic selfcheck` with rich and JSON output for analyzer imports,
+  environment basics, a bundled pipeline fixture, schemas, rendering safety,
+  and optional-extra status. Its schema is available through `repomedic schema`.
+
+### Changed
+- CI now includes a full toolchain leg, a 75% coverage floor, corpus threshold
+  reporting as an artifact, dependency auditing, and built-wheel selfcheck and
+  no-exec dogfood gates.
+- The package version is now `0.6.0`; V&V sources remain repository-only while
+  the bounded selfcheck fixture ships in the wheel.
+
+### Fixed
+- Gitleaks and semgrep results now pass through the same ignore rules as file
+  discovery, so `exclude` config and test-directory skipping apply even when
+  those tools are installed.
+
+### Security
+- Runtime corpus fixtures execute only with explicit case permission, bounded
+  timeouts, contained paths, and an isolated allowlisted environment.
+- Markdown refuses binary or invalid-UTF snippet sources. Secret findings expose
+  the same stable masked handle in JSON, Markdown, and SARIF while withholding
+  the raw line everywhere.
+- Composite-action inputs cross the shell boundary through environment variables,
+  and external CI actions are pinned to official release commits.
+
 ## 0.5.0 (2026-07-10)
 
 Debugger integration release: RepoMedic can capture Python crash state

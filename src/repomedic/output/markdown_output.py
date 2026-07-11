@@ -19,9 +19,15 @@ from pathlib import Path
 
 from repomedic.core.languages import fence_for_path, verify_commands_for
 from repomedic.models import SEVERITY_ORDER, Finding, ScanReport
-from repomedic.output.sanitize import fenced_block, sanitize_inline, yaml_scalar
+from repomedic.output.sanitize import (
+    contains_unsafe_control_characters,
+    fenced_block,
+    sanitize_inline,
+    yaml_scalar,
+)
 
 SNIPPET_CONTEXT_LINES = 2
+SNIPPET_MAX_FILE_BYTES = 2 * 1024 * 1024
 SNIPPET_MAX_LINE_CHARS = 200
 
 PROJECT_LEVEL = "(project-level)"
@@ -194,6 +200,7 @@ def _append_finding(
     lines.append("")
     lines.extend(fenced_block(finding.description, "text"))
     lines.append("")
+    _append_masked_match(lines, finding)
     _append_debug_state(lines, finding)
     if finding.suggestion:
         if "\n" in finding.suggestion:
@@ -224,6 +231,14 @@ def _append_debug_state(lines: list[str], finding: Finding) -> None:
     lines.append("")
 
 
+def _append_masked_match(lines: list[str], finding: Finding) -> None:
+    masked_match = finding.metadata.get("match_masked")
+    if not isinstance(masked_match, str) or not masked_match:
+        return
+    lines.append(f"**Masked match:** {sanitize_inline(masked_match, 200)}")
+    lines.append("")
+
+
 def _snippet_for(finding: Finding, target_root: Path) -> str | None:
     """Return a fenced snippet around the finding's line, or None."""
     if finding.metadata.get("contains_secret"):
@@ -232,16 +247,8 @@ def _snippet_for(finding: Finding, target_root: Path) -> str | None:
     if not finding.file_path or not finding.line:
         return None
     path = target_root / finding.file_path
-    try:
-        # Never render content from outside the scan root — a finding path
-        # or symlink must not be able to pull foreign files into the report.
-        resolved = path.resolve(strict=False)
-        if not resolved.is_relative_to(target_root.resolve()):
-            return None
-        if not path.is_file() or path.stat().st_size > 2 * 1024 * 1024:
-            return None
-        file_lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
-    except OSError:
+    file_lines = _read_safe_snippet_lines(path, target_root)
+    if file_lines is None:
         return None
 
     line_idx = finding.line - 1
@@ -264,6 +271,29 @@ def _snippet_for(finding: Finding, target_root: Path) -> str | None:
     longest_run = max((len(m) for m in re.findall(r"`+", body)), default=0)
     fence_chars = "`" * max(3, longest_run + 1)
     return f"{fence_chars}{fence_for_path(path)}\n{body}\n{fence_chars}"
+
+
+def _read_safe_snippet_lines(path: Path, target_root: Path) -> list[str] | None:
+    """Read one bounded UTF-8 text file after containment and control checks."""
+    try:
+        # Never render content from outside the scan root — a finding path
+        # or symlink must not be able to pull foreign files into the report.
+        resolved = path.resolve(strict=True)
+        resolved_root = target_root.resolve(strict=True)
+        if not resolved.is_relative_to(resolved_root):
+            return None
+        if not resolved.is_file():
+            return None
+        with resolved.open("rb") as source_file:
+            raw_content = source_file.read(SNIPPET_MAX_FILE_BYTES + 1)
+        if len(raw_content) > SNIPPET_MAX_FILE_BYTES or b"\x00" in raw_content:
+            return None
+        text_content = raw_content.decode("utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+    if contains_unsafe_control_characters(text_content):
+        return None
+    return text_content.splitlines()
 
 
 def _append_analyzer_failures(lines: list[str], report: ScanReport) -> None:

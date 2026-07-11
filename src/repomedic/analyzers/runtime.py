@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import sys
 from pathlib import Path
+from typing import Literal
 
 from repomedic.analyzers import register
 from repomedic.analyzers.base import BaseAnalyzer
@@ -112,8 +113,13 @@ class RuntimeAnalyzer(BaseAnalyzer):
         debug: bool = False,
         bounds: CaptureBounds | None = None,
         timeout: int = 30,
+        env_mode: Literal["isolated", "inherit"] = "inherit",
     ) -> AnalyzerResult:
-        """Run a script with the interpreter matching its extension and analyze failures."""
+        """Run a script with the matching interpreter and analyze failures.
+
+        User-invoked runtime commands inherit the environment by default.
+        Automated callers can request an isolated, allowlisted environment.
+        """
         if timeout <= 0:
             return AnalyzerResult(analyzer=self.name, error="Timeout must be positive.")
 
@@ -131,6 +137,7 @@ class RuntimeAnalyzer(BaseAnalyzer):
                 working_directory,
                 bounds or CaptureBounds(),
                 timeout,
+                env_mode,
             )
 
         return self._analyze_plain(
@@ -141,6 +148,7 @@ class RuntimeAnalyzer(BaseAnalyzer):
             interpreter,
             language,
             timeout,
+            env_mode,
         )
 
     def _analyze_plain(
@@ -152,8 +160,16 @@ class RuntimeAnalyzer(BaseAnalyzer):
         interpreter: list[str],
         language: str,
         timeout: int,
+        env_mode: Literal["isolated", "inherit"],
     ) -> AnalyzerResult:
-        result = self._execute(script_path, interpreter, args, cwd, timeout)
+        result = self._execute(
+            script_path,
+            interpreter,
+            args,
+            cwd,
+            timeout,
+            env_mode,
+        )
         return self._result_from_execution(
             result,
             suffix,
@@ -185,14 +201,13 @@ class RuntimeAnalyzer(BaseAnalyzer):
         args: list[str],
         cwd: str,
         timeout: int,
+        env_mode: Literal["isolated", "inherit"],
     ) -> ProcessResult:
-        # The user explicitly asked to run their own script, so it gets the
-        # full environment — unlike scan tools, which run isolated.
         return run(
             [*interpreter, script_path, *args],
             cwd=cwd,
             timeout=timeout,
-            env_mode="inherit",
+            env_mode=env_mode,
         )
 
     def _result_from_execution(
@@ -254,6 +269,7 @@ class RuntimeAnalyzer(BaseAnalyzer):
         cwd: str,
         bounds: CaptureBounds,
         timeout: int,
+        env_mode: Literal["isolated", "inherit"],
     ) -> AnalyzerResult:
         outcome = capture_python_crash_outcome(
             script_path,
@@ -261,9 +277,17 @@ class RuntimeAnalyzer(BaseAnalyzer):
             cwd=cwd,
             timeout=timeout,
             bounds=bounds,
+            env_mode=env_mode,
         )
         if outcome.status is DebugCaptureStatus.unavailable:
-            result = self._execute(script_path, INTERPRETERS[".py"], args, cwd, timeout)
+            result = self._execute(
+                script_path,
+                INTERPRETERS[".py"],
+                args,
+                cwd,
+                timeout,
+                env_mode,
+            )
             return self._result_from_execution(
                 result, ".py", script_path, "python", cwd, timeout
             )

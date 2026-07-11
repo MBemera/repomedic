@@ -39,11 +39,29 @@ def test_fix_preview_tool_is_always_dry_run(make_project):
     assert all(a["status"] != "FIXED" for a in payload["actions"])
 
 
-def test_run_script_tool_reports_crash(make_project):
+def test_run_script_tool_requires_explicit_execution(make_project):
     project = make_project({"boom.py": "raise ValueError('nope')\n"})
-    payload = mcp_server.run_script(str(project / "boom.py"))
+
+    with pytest.raises(ValueError, match="allow_exec=true"):
+        mcp_server.run_script(str(project / "boom.py"))
+
+
+def test_run_script_tool_reports_crash_in_isolated_environment(make_project, monkeypatch):
+    from repomedic.analyzers.runtime import RuntimeAnalyzer
+
+    project = make_project({"boom.py": "raise ValueError('nope')\n"})
+    original_analyze_script = RuntimeAnalyzer.analyze_script
+    captured_options = {}
+
+    def capture_analyze_options(self, script_path, cwd=None, args=None, **options):
+        captured_options.update(options)
+        return original_analyze_script(self, script_path, cwd, args, **options)
+
+    monkeypatch.setattr(RuntimeAnalyzer, "analyze_script", capture_analyze_options)
+    payload = mcp_server.run_script(str(project / "boom.py"), allow_exec=True)
 
     assert payload["exit_code"] == 1
+    assert captured_options["env_mode"] == "isolated"
     codes = [
         f["code"]
         for result in payload["report"]["results"]
@@ -54,7 +72,7 @@ def test_run_script_tool_reports_crash(make_project):
 
 def test_run_script_tool_rejects_non_file(tmp_path: Path):
     with pytest.raises(ValueError):
-        mcp_server.run_script(str(tmp_path))
+        mcp_server.run_script(str(tmp_path), allow_exec=True)
 
 
 def test_doctor_explain_and_list_analyzers_are_typed(make_project):

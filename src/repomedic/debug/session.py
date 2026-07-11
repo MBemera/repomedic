@@ -15,7 +15,7 @@ from concurrent.futures import Future, TimeoutError as FutureTimeoutError
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import IO, Any
+from typing import IO, Any, Literal
 
 from repomedic.debug.dap import (
     DapClient,
@@ -23,7 +23,7 @@ from repomedic.debug.dap import (
     DapMessage,
     DapTimeoutError,
 )
-from repomedic.utils.process import kill_process_tree
+from repomedic.utils.process import isolated_env, kill_process_tree
 from repomedic.utils.redact import redact_debug_variable, redact_sensitive_text
 
 logger = logging.getLogger("repomedic")
@@ -148,6 +148,7 @@ def capture_python_crash(
     cwd: str | Path | None = None,
     timeout: float = 60,
     bounds: CaptureBounds | None = None,
+    env_mode: Literal["isolated", "inherit"] = "inherit",
 ) -> DebugCapture | None:
     """Capture an uncaught Python exception, returning ``None`` on fallback."""
     return capture_python_crash_outcome(
@@ -156,6 +157,7 @@ def capture_python_crash(
         cwd=cwd,
         timeout=timeout,
         bounds=bounds,
+        env_mode=env_mode,
     ).capture
 
 
@@ -165,6 +167,7 @@ def capture_python_crash_outcome(
     cwd: str | Path | None = None,
     timeout: float = 60,
     bounds: CaptureBounds | None = None,
+    env_mode: Literal["isolated", "inherit"] = "inherit",
 ) -> DebugCaptureOutcome:
     """Run one debugger session and report whether the target already ran."""
     if timeout <= 0:
@@ -185,6 +188,7 @@ def capture_python_crash_outcome(
         working_directory,
         deadline,
         capture_bounds,
+        env_mode,
     )
     if debug_process is None or connection is None:
         return _unavailable_outcome()
@@ -202,9 +206,17 @@ def _start_capture_process(
     cwd: Path,
     deadline: float,
     bounds: CaptureBounds,
+    env_mode: Literal["isolated", "inherit"],
 ) -> tuple[_DebugProcess | None, socket.socket | None]:
     try:
-        return _start_debug_process(script, args, cwd, deadline, bounds)
+        return _start_debug_process(
+            script,
+            args,
+            cwd,
+            deadline,
+            bounds,
+            env_mode,
+        )
     except (OSError, subprocess.SubprocessError):
         logger.warning(
             "Python debugger could not start; falling back to traceback analysis"
@@ -287,10 +299,18 @@ def _start_debug_process(
     cwd: Path,
     deadline: float,
     bounds: CaptureBounds,
+    env_mode: Literal["isolated", "inherit"],
 ) -> tuple[_DebugProcess | None, socket.socket | None]:
     for _ in range(ADAPTER_START_ATTEMPTS):
         port = _probe_loopback_port()
-        debug_process = _spawn_debug_process(script, args, cwd, port, bounds)
+        debug_process = _spawn_debug_process(
+            script,
+            args,
+            cwd,
+            port,
+            bounds,
+            env_mode,
+        )
         connection = _connect_to_adapter(debug_process.process, port, deadline)
         if connection is not None:
             return debug_process, connection
@@ -312,10 +332,11 @@ def _spawn_debug_process(
     cwd: Path,
     port: int,
     bounds: CaptureBounds,
+    env_mode: Literal["isolated", "inherit"],
 ) -> _DebugProcess:
     process = subprocess.Popen(
         _debug_command(script, args, port),
-        **_debug_process_options(cwd),
+        **_debug_process_options(cwd, env_mode),
     )
     assert process.stdout is not None
     assert process.stderr is not None
@@ -339,13 +360,17 @@ def _debug_command(script: Path, args: list[str], port: int) -> list[str]:
     ]
 
 
-def _debug_process_options(cwd: Path) -> dict[str, Any]:
+def _debug_process_options(
+    cwd: Path,
+    env_mode: Literal["isolated", "inherit"],
+) -> dict[str, Any]:
+    environment = isolated_env() if env_mode == "isolated" else dict(os.environ)
     popen_kwargs: dict[str, Any] = {
         "cwd": str(cwd),
         "stdin": subprocess.DEVNULL,
         "stdout": subprocess.PIPE,
         "stderr": subprocess.PIPE,
-        "env": dict(os.environ),
+        "env": environment,
     }
     if sys.platform != "win32":
         popen_kwargs["start_new_session"] = True

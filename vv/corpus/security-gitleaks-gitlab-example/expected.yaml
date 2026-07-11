@@ -1,0 +1,16 @@
+schema_version: 1
+analyzer: security
+requires:
+  - gitleaks
+allow_exec: false
+initialize_git: false
+expect:
+  - analyzer: security
+    code: SEC-001
+    file: settings.py
+    lines: [1, 1]
+    severity: error
+forbid:
+  - SEC-002
+  - SEC-003
+allow_extra: false

@@ -1,0 +1,20 @@
+schema_version: 1
+analyzer: runtime
+requires:
+  - python
+allow_exec: true
+initialize_git: false
+entrypoint: crash.py
+arguments: []
+timeout: 5
+expect:
+  - analyzer: runtime
+    code: RUN-002
+    file: crash.py
+    lines: [1, 1]
+    severity: error
+forbid:
+  - RUN-001
+  - RUN-003
+  - RUN-004
+allow_extra: false

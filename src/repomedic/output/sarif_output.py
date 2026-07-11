@@ -101,6 +101,9 @@ def _result_for(finding: Finding, rule_index: int) -> dict:
         "message": {"text": message},
         "partialFingerprints": {FINGERPRINT_KEY: finding.fingerprint},
     }
+    masked_match = finding.metadata.get("match_masked")
+    if isinstance(masked_match, str) and masked_match:
+        result["properties"] = {"repomedicMaskedMatch": masked_match}
     if finding.file_path:
         physical: dict = {
             "artifactLocation": {"uri": str(PurePosixPath(finding.file_path))}

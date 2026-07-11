@@ -689,12 +689,35 @@ def doctor(
 
 
 @app.command()
+def selfcheck(
+    output: str = typer.Option(
+        "rich", "--output", "-o", help="Output format: rich or json"
+    ),
+) -> None:
+    """Verify the installed package, core pipeline, schemas, and render safety."""
+    if output not in {"rich", "json"}:
+        err_console.print(
+            f"[red]Error:[/] invalid --output '{output}' (choose from: rich, json)"
+        )
+        raise typer.Exit(2)
+
+    from repomedic.commands.selfcheck import collect_selfcheck, render_selfcheck
+
+    data = collect_selfcheck()
+    if output == "json":
+        typer.echo(data.model_dump_json(indent=2))
+    else:
+        render_selfcheck(data, console)
+    raise typer.Exit(0 if data.healthy else 1)
+
+
+@app.command()
 def schema(
     kind: str = typer.Option(
         "report",
         "--kind",
         "-k",
-        help="Payload kind: report, baseline, doctor, explain, fix, analyzers",
+        help="Payload kind: report, baseline, doctor, explain, fix, analyzers, selfcheck",
     ),
 ) -> None:
     """Print the JSON Schema for a repomedic output payload (for validators/contract tests)."""
@@ -708,6 +731,7 @@ def schema(
         DoctorReport,
         ExplainReport,
         FixReport,
+        SelfcheckReport,
     )
 
     models: dict[str, type[BaseModel]] = {
@@ -717,6 +741,7 @@ def schema(
         "explain": ExplainReport,
         "fix": FixReport,
         "analyzers": AnalyzerList,
+        "selfcheck": SelfcheckReport,
     }
     model = models.get(kind)
     if model is None:

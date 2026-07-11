@@ -1,0 +1,15 @@
+schema_version: 1
+analyzer: hygiene
+requires: []
+allow_exec: false
+initialize_git: false
+expect:
+  - analyzer: hygiene
+    code: HYG-002
+    file: null
+    lines: null
+    severity: info
+forbid:
+  - HYG-001
+  - HYG-003
+allow_extra: false

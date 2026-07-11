@@ -1,0 +1,16 @@
+schema_version: 1
+analyzer: static
+requires:
+  - ruff
+allow_exec: false
+initialize_git: false
+expect:
+  - analyzer: static
+    code: STATIC-RUFF-F401
+    file: app.py
+    lines: [1, 1]
+    severity: warning
+forbid:
+  - STATIC-001
+  - STATIC-002
+allow_extra: false

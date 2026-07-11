@@ -52,6 +52,30 @@ def test_analyze_script_import_error(tmp_path):
     assert "ModuleNotFoundError" in result.findings[0].title
 
 
+def test_analyze_script_forwards_isolated_environment_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    script = tmp_path / "app.py"
+    script.write_text("print('ok')\n")
+    captured_options: dict[str, object] = {}
+
+    def fake_run(command, **options):
+        captured_options.update(options)
+        return ProcessResult(ProcessStatus.ok, 0, "ok\n", "")
+
+    monkeypatch.setattr(runtime_module, "run", fake_run)
+
+    result = RuntimeAnalyzer().analyze_script(
+        str(script),
+        cwd=str(tmp_path),
+        env_mode="isolated",
+    )
+
+    assert result.findings == []
+    assert captured_options["env_mode"] == "isolated"
+
+
 def test_debug_capture_emits_run_004_at_deepest_user_frame(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

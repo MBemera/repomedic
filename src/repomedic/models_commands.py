@@ -78,3 +78,20 @@ class AnalyzerList(BaseModel):
     tool: Literal["repomedic"] = "repomedic"
     schema_version: int = COMMAND_SCHEMA_VERSION
     analyzers: list[AnalyzerInfo] = Field(default_factory=list)
+
+
+class SelfcheckCheck(BaseModel):
+    """One named `repomedic selfcheck` diagnostic."""
+
+    name: str
+    status: Literal["PASS", "FAIL", "INFO"]
+    detail: str
+
+
+class SelfcheckReport(BaseModel):
+    """`repomedic selfcheck` — installed-package integrity diagnostics."""
+
+    tool: Literal["repomedic"] = "repomedic"
+    schema_version: int = COMMAND_SCHEMA_VERSION
+    healthy: bool = True
+    checks: list[SelfcheckCheck] = Field(default_factory=list)

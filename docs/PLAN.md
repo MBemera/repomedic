@@ -1,7 +1,11 @@
 # RepoMedic: Review, Agent Workflows, VS Code Debugger, and V&V Framework
 
-> **Status (2026-07-10): Phase 2 complete (v0.5.0)** — Phases 0–2 are complete.
-> Phases 2.1–2.3 are now implemented: bounded stdlib DAP transport, loopback-only
+> **Status (2026-07-11): Phase 3 complete (v0.6.0)** — Phases 0–3 are complete.
+> Phases 3.1–3.5 are now implemented: a validated ground-truth corpus and
+> threshold scorer, output-contract and adversarial suites, installed-wheel
+> `selfcheck`, and full CI coverage across toolchains, corpus scoring, coverage,
+> dependency audit, dogfood, and action self-test. Phases 2.1–2.3 delivered
+> bounded stdlib DAP transport, loopback-only
 > `debugpy` crash capture, process-group deadline enforcement, bounded/redacted
 > frames and locals, `RUN-004`, `repomedic debug`, `run --debug`, safely fenced
 > markdown state, real-adapter tests, and a thin VS Code extension with bounded
@@ -13,8 +17,8 @@
 > suppressions (core/postprocess shared pass), MCP server (8 service-backed
 > tools, exec off by default), agents-guide single-sourcing (data/AGENTS.md),
 > composite GitHub Action + pre-commit hook + CI action-selftest, `schema`
-> export command. Each numbered item maps to one commit on this branch.
-> **Next: Phase 3.1** (ground-truth corpus and scorer).
+> export command. Phase 0–2 numbered items map to individual commits on this branch.
+> **Plan complete through Phase 3.**
 
 ## Context
 
@@ -254,14 +258,12 @@ launches the debugger.
 
 ---
 
-## Phase 3 — V&V framework (PR: ground-truth corpus, contract + adversarial suites, selfcheck, full CI)
+## Phase 3 — V&V framework (complete in v0.6.0)
 
 Goal: prove RepoMedic's findings are **true** (precision/recall) and the tool is **safe** (injection/redaction/
 subprocess), continuously.
 
-**Next implementation: 3.1 Ground-truth corpus + scorer.**
-
-**3.1 Ground-truth corpus + scorer** — new top-level `vv/` (excluded from wheel + self-scan). `vv/corpus/<case>/`
+**3.1 Ground-truth corpus + scorer (complete)** — new top-level `vv/` (excluded from wheel + self-scan). `vv/corpus/<case>/`
 each with a seeded-bug `project/` + `expected.yaml` (`requires:` toolchains, `expect:` [code,file,line-range,
 severity], `forbid:` false-positive codes, `allow_extra`). Cases span every analyzer incl. a `clean-project`
 false-positive control and secrets using AWS's documented example key (push-protection-safe). `vv/scorer.py`
@@ -269,12 +271,12 @@ false-positive control and secrets using AWS's documented example key (push-prot
 recall vs `vv/thresholds.yaml`. **Primary runner is pytest-integrated** (`tests/vv/test_corpus.py`, parametrized,
 `@pytest.mark.corpus`, per-case `requires` skips); `python -m vv.scorer` prints the table for CI artifacts.
 
-**3.2 Output-contract tests** (`tests/contract/`) — JSON schema drift vs committed snapshot + live validation;
+**3.2 Output-contract tests (complete)** (`tests/contract/`) — JSON schema drift vs committed snapshot + live validation;
 full exit-code matrix (0/1/2 across scan/sniff/run/doctor/baseline); stdout-purity via **real subprocess** (json =
 one doc, sniff = markdown only, progress on stderr, mcp = protocol only); fingerprint v2 drift/occurrence/stability
 at contract level.
 
-**3.3 Adversarial suite** (`tests/adversarial/`) — `payloads.py` (heading/fence/front-matter escapes, plain-text
+**3.3 Adversarial suite (complete)** (`tests/adversarial/`) — `payloads.py` (heading/fence/front-matter escapes, plain-text
 "ignore all previous instructions", rich markup, pipe/table breakage, long lines) seeded via `make_project` into
 log lines, TODOs, filenames, `.env` values, script stderr, package names, symlink targets. Assert: every payload
 sits inside a strictly-longer fence; no heading carries raw payload; front matter round-trips `yaml.safe_load`;
@@ -283,13 +285,13 @@ from JSON/markdown/SARIF while masked form present; huge (10 MB) + binary files 
 snippet; monkeypatched signal-death/timeout `ProcessResult`s never read as "not installed"; debug-path locals
 fenced.
 
-**3.4 `repomedic selfcheck`** — new command + `SelfcheckReport` model. Named pass/fail checks: import-integrity
+**3.4 `repomedic selfcheck` (complete)** — new command + `SelfcheckReport` model. Named pass/fail checks: import-integrity
 (all 13 analyzers import, unique names), env-basics (python/git resolvable via isolated `run`), pipeline-roundtrip
 (scan a bundled `data/selfcheck/` mini-fixture, assert expected codes present + forbidden absent),
 schema-self-validation, render-integrity (canary payload stays fenced, front matter parses), extras-status
 (informational). Exit 0/1; `-o json|rich`. CI runs it against the **built wheel**.
 
-**3.5 CI completion** — `ci.yml` grows: `lint`, blocking `typecheck`, `test` matrix (no toolchains → proves graceful
+**3.5 CI completion (complete)** — `ci.yml` grows: `lint`, blocking `typecheck`, `test` matrix (no toolchains → proves graceful
 degradation), **`test-toolchains`** (one leg with node/go/rust/shellcheck/gitleaks/semgrep+bandit — finally
 exercises the subprocess parsers and `requires` corpus cases; the dedicated Node 22 job already builds, tests, and
 audits the VS Code extension), `coverage`

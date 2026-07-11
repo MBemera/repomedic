@@ -5,11 +5,11 @@ from __future__ import annotations
 import json
 
 import pytest
-from typer.testing import CliRunner
 
 from repomedic.cli import app
+from tests.cli_runner import create_cli_runner
 
-runner = CliRunner(mix_stderr=False)
+runner = create_cli_runner()
 
 
 @pytest.mark.parametrize(

@@ -1,0 +1,16 @@
+schema_version: 1
+analyzer: rust
+requires:
+  - cargo
+allow_exec: true
+initialize_git: false
+expect:
+  - analyzer: rust
+    code: RUST-E0425
+    file: src/main.rs
+    lines: [2, 2]
+    severity: error
+forbid:
+  - RUST-DEP-001
+  - RUST-DEP-002
+allow_extra: false

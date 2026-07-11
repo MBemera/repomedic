@@ -89,6 +89,19 @@ def test_secret_inside_container_value_is_masked() -> None:
     assert "supe…" in values["config"]
 
 
+def test_debug_process_options_support_isolated_environment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("REPOMEDIC_TEST_SECRET", "must-not-reach-script")
+
+    isolated_options = session._debug_process_options(tmp_path, "isolated")
+    inherited_options = session._debug_process_options(tmp_path, "inherit")
+
+    assert "REPOMEDIC_TEST_SECRET" not in isolated_options["env"]
+    assert inherited_options["env"]["REPOMEDIC_TEST_SECRET"] == "must-not-reach-script"
+
+
 def test_real_debugpy_captures_uncaught_exception(tmp_path: Path) -> None:
     pytest.importorskip("debugpy")
     script = tmp_path / "crash.py"

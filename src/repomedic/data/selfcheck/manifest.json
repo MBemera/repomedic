@@ -1,0 +1,5 @@
+{
+  "analyzers": ["config", "logs"],
+  "expected_codes": ["CFG-010", "LOG-001"],
+  "forbidden_codes": ["CFG-011", "CFG-012", "LOG-002"]
+}

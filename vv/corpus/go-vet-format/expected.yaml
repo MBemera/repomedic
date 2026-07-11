@@ -1,0 +1,18 @@
+schema_version: 1
+analyzer: go
+requires:
+  - go
+allow_exec: true
+initialize_git: false
+expect:
+  - analyzer: go
+    code: GO-002
+    file: main.go
+    lines: [6, 6]
+    severity: warning
+forbid:
+  - GO-001
+  - GO-DEP-001
+  - GO-DEP-002
+  - GO-DEP-003
+allow_extra: false

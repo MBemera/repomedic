@@ -163,6 +163,37 @@ repomedic run path/to/script.py --debug -o markdown
   debug scripts you trust, use narrowly scoped development credentials, and do
   not treat best-effort redaction as permission to expose production secrets.
 
+## Installed-package selfcheck and repository V&V
+
+Use the built-in selfcheck after installation or before handing RepoMedic to an
+automation:
+
+```bash
+repomedic selfcheck -o json
+```
+
+It verifies all 13 analyzer imports, isolated Python and Git availability, a
+bundled no-exec pipeline fixture, exported schemas, and markdown rendering
+safety. Optional-extra availability is informational. Exit `0` means every
+required check passed; exit `1` means at least one failed. The JSON payload has
+`schema_version: 1`, a top-level `healthy` verdict, and named checks; export its
+contract with `repomedic schema --kind selfcheck`.
+
+From a source checkout, run the repository-only V&V framework as needed:
+
+```bash
+pytest -q -m "not toolchain"         # portable suite
+pytest -q tests/contract             # output and exit-code contracts
+pytest -q -m adversarial             # hostile-input and boundary tests
+pytest -q -m corpus                  # ground truth; missing toolchains skip
+python -m vv.scorer                  # precision/recall threshold table
+python -m vv.scorer --strict         # require every declared toolchain
+```
+
+The `vv/` corpus and scorer are not included in the installed wheel. Strict mode
+is intended for a prepared CI/toolchain environment; use `selfcheck` for the
+portable installed-package integrity verdict.
+
 ## All commands
 
 | Command | Purpose | Default output |
@@ -173,6 +204,7 @@ repomedic run path/to/script.py --debug -o markdown
 | `repomedic run SCRIPT [ARGS…]` | Execute a script (`.py .js .mjs .cjs .sh .bash .rb .php .pl .lua`) and analyze the failure | JSON |
 | `repomedic debug SCRIPT [ARGS…]` | Capture a Python crash with bounded frames and redacted locals | JSON; `-o rich` / `-o markdown` |
 | `repomedic doctor [PATH]` | Environment/toolchain health (exit 1 if something required is missing) | rich; `-o json` |
+| `repomedic selfcheck` | Installed-package integrity and bundled no-exec pipeline checks | rich; `-o json` |
 | `repomedic explain [PATH]` | Project brief: type, languages, dependencies | rich; `-o markdown` / `-o json` |
 | `repomedic fix [PATH]` | Safe auto-fixes (ruff --fix, .gitignore, .env.example) | rich; `--dry-run`, `-o json` |
 | `repomedic list-analyzers` | List analyzers | rich; `-o json` |
@@ -215,9 +247,10 @@ failures and exec-skipped checks appear as invocation notifications.
 With the `mcp` extra installed (`pip install 'repomedic[mcp]'`),
 `repomedic mcp` serves these tools over stdio: `scan`, `fix_report`,
 `run_script`, `doctor`, `explain`, `fix_preview` (always dry-run),
-`baseline_write`, `list_analyzers`. Every tool defaults to `allow_exec=false`
-— pass `allow_exec=true` per call only for targets you trust. Results are
-structured JSON (markdown only from `fix_report`).
+`baseline_write`, `list_analyzers`. Scans default to `allow_exec=false`.
+`run_script` also requires `allow_exec=true` and runs trusted code in an
+isolated, allowlisted environment. Results are structured JSON (markdown only
+from `fix_report`).
 
 Client config (e.g. Claude Desktop / any MCP client):
 
@@ -253,4 +286,5 @@ config key — a scanned repo must never be able to grant itself execution.
 `repomedic run` and `repomedic debug` exit `1` when the script failed to run
 (unsupported extension, missing interpreter), timed out, or ran with errors;
 they exit `0` when it ran cleanly. `repomedic doctor` exits `1` when a required
-tool/dependency is missing.
+tool/dependency is missing. `repomedic selfcheck` exits `1` when any required
+integrity check fails; optional-extra status does not make it unhealthy.

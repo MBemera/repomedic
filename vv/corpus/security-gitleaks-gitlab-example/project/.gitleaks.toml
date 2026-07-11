@@ -1,0 +1,6 @@
+title = "RepoMedic V&V canary rule"
+
+[[rules]]
+id = "repomedic-vv-canary"
+description = "Detect the inert RepoMedic V&V canary"
+regex = '''REPOMEDIC_GITLEAKS_CANARY_[A-Z0-9]{16}'''
