@@ -10,6 +10,10 @@
 ### Security
 - Raised the `mcp` extra floor to 1.23.0, which fixes PYSEC-2026-1617
   (caught by the CI dependency-audit gate).
+- Relaxed the `jsonschema` floor to 4.25: the 4.26 floor conflicted with
+  semgrep's `jsonschema~=4.25.1` pin, forcing pip to backtrack to ancient
+  semgrep releases whose transitive protobuf carried PYSEC-2026-1805 and
+  whose CLI still imported `pkg_resources`.
 
 ## 0.7.2 (2026-07-11)
 
