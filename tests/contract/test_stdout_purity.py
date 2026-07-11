@@ -3,10 +3,17 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
+import threading
 
 import pytest
 
-from tests.contract.conftest import FIXTURES_ROOT
+from tests.contract.conftest import (
+    CLI_BOOTSTRAP,
+    FIXTURES_ROOT,
+    _build_subprocess_environment,
+)
 
 PROJECTS_ROOT = FIXTURES_ROOT / "projects"
 
@@ -58,30 +65,62 @@ def test_sniff_stdout_contains_only_the_markdown_report(run_cli_process) -> None
     assert "\x1b[" not in result.stdout
 
 
-def test_mcp_stdout_contains_only_json_rpc_messages(run_cli_process) -> None:
+def test_mcp_stdout_contains_only_json_rpc_messages() -> None:
+    # A well-behaved MCP client reads each response before sending more and
+    # keeps stdin open until it has everything. Writing all requests and
+    # closing stdin in one shot races the SDK's EOF shutdown against the
+    # in-flight tools/list handler (flaky on Python 3.11).
     pytest.importorskip("mcp")
     from mcp.types import LATEST_PROTOCOL_VERSION
 
-    messages = [
-        {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "initialize",
-            "params": {
-                "protocolVersion": LATEST_PROTOCOL_VERSION,
-                "capabilities": {},
-                "clientInfo": {"name": "repomedic-contract", "version": "1"},
-            },
+    initialize = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": LATEST_PROTOCOL_VERSION,
+            "capabilities": {},
+            "clientInfo": {"name": "repomedic-contract", "version": "1"},
         },
-        {"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}},
-        {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
-    ]
-    input_text = "".join(f"{json.dumps(message)}\n" for message in messages)
+    }
+    initialized = {"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}}
+    tools_list = {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}
 
-    result = run_cli_process(["mcp"], input_text=input_text, timeout=20)
-    responses = [json.loads(line) for line in result.stdout.splitlines() if line]
+    process = subprocess.Popen(
+        [sys.executable, "-c", CLI_BOOTSTRAP, "mcp"],
+        cwd=FIXTURES_ROOT,
+        env=_build_subprocess_environment(),
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1,
+    )
+    assert process.stdin is not None and process.stdout is not None
+    watchdog = threading.Timer(20, process.kill)
+    watchdog.start()
+    try:
+        process.stdin.write(json.dumps(initialize) + "\n")
+        process.stdin.flush()
+        first = json.loads(process.stdout.readline())
 
-    assert result.returncode == 0
+        process.stdin.write(json.dumps(initialized) + "\n")
+        process.stdin.write(json.dumps(tools_list) + "\n")
+        process.stdin.flush()
+        second = json.loads(process.stdout.readline())
+
+        process.stdin.close()
+        returncode = process.wait(timeout=10)
+        remainder = process.stdout.read()
+    finally:
+        watchdog.cancel()
+        if process.poll() is None:
+            process.kill()
+            process.wait()
+
+    assert returncode == 0
+    responses = [first, second]
     assert [response["id"] for response in responses] == [1, 2]
     assert all(response["jsonrpc"] == "2.0" for response in responses)
     assert all("result" in response for response in responses)
+    assert remainder.strip() == ""  # nothing but protocol on stdout
