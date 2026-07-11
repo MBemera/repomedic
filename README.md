@@ -54,6 +54,7 @@ Language detection covers 30+ languages (Python, JS/TS, Go, Rust, Java, Kotlin, 
 |---|---|
 | `repomedic sniff [PATH]` | **The agent command**: scan and print the markdown fix report to stdout; exit 1 on errors |
 | `repomedic [PATH]` | Scan with a rich terminal UI (health score, tables) — shorthand for `repomedic scan` |
+| `repomedic menu` | Interactive launcher — also what bare `repomedic` opens on a terminal; includes "Fix with coding agent" handoff |
 | `repomedic run script.py` | Run a script (any supported language) and analyze the failure |
 | `repomedic debug script.py` | Capture an uncaught Python exception with bounded frames and redacted locals |
 | `repomedic doctor` | Check the dev environment: interpreters, toolchains, project dependencies |
@@ -87,8 +88,13 @@ Requires **Python 3.11+**. Core dependencies: `typer`, `pydantic`, `rich`, `pyya
 # Agent-ready fix report on stdout
 repomedic sniff .
 
-# Human-friendly scan of the current directory
+# Interactive launcher (bare invocation on a terminal opens the menu;
+# piped/scripted invocations always scan, so agents never see a prompt)
 repomedic
+
+# The menu's "Fix with coding agent" writes repomedic-fixes.md and, after a
+# y/N confirmation, launches your agent CLI on it (default `claude`;
+# override with REPOMEDIC_AGENT="codex --full-auto" or similar)
 
 # Scan a GitHub repo directly
 repomedic https://github.com/user/repo

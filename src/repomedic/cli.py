@@ -12,6 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional  # noqa: UP035
 
+import click
 import typer
 from rich.console import Console
 from rich.panel import Panel
@@ -34,14 +35,20 @@ from repomedic.output.rich_output import print_rich
 class DefaultScanGroup(TyperGroup):
     """Click group that routes bare paths/flags to the `scan` command.
 
-    Makes `repomedic`, `repomedic .`, and `repomedic --output json src/`
-    all behave as `repomedic scan ...` while keeping normal subcommand
-    dispatch (`repomedic sniff .`) intact.
+    Makes `repomedic .` and `repomedic --output json src/` behave as
+    `repomedic scan ...` while keeping normal subcommand dispatch
+    (`repomedic sniff .`) intact. With no arguments at all on an
+    interactive terminal, it routes to the `menu` launcher instead —
+    piped and scripted invocations still scan, so agents never see a prompt.
     """
 
     default_command = "scan"
 
     def parse_args(self, ctx, args: list[str]) -> list[str]:  # noqa: ANN001 — click Context (vendored in typer)
+        from repomedic.commands.menu import stdio_is_interactive
+
+        if not args and stdio_is_interactive():
+            return super().parse_args(ctx, ["menu"])
         has_command = any(not a.startswith("-") and a in self.commands for a in args)
         if not has_command:
             non_options = [a for a in args if not a.startswith("-")]
@@ -59,7 +66,8 @@ app = typer.Typer(
     help=(
         "Agent-first repo bug sniffer — diagnose issues in folders and repos, "
         "hand the fixes to a coding agent. Run `repomedic agents` for the agent guide. "
-        "Bare `repomedic [PATH]` is shorthand for `repomedic scan [PATH]`."
+        "Bare `repomedic [PATH]` is shorthand for `repomedic scan [PATH]`; "
+        "with no arguments on a terminal it opens the interactive menu."
     ),
     no_args_is_help=False,
 )
@@ -772,3 +780,29 @@ def agents() -> None:
     # nl=False: the guide ends with its own newline, and the docs-sync
     # contract is `repomedic agents > docs/AGENTS.md` being byte-equal.
     typer.echo(get_agent_guide(), nl=False)
+
+
+def _dispatch_cli(args: list[str]) -> int:
+    """Run a repomedic CLI invocation in-process, returning its exit code.
+
+    The menu uses this so every action goes through the same argument
+    parsing and rendering as a normal terminal invocation.
+    """
+    try:
+        app(args=args, standalone_mode=False)
+    except click.exceptions.Exit as exc:
+        return exc.exit_code
+    except click.ClickException as exc:
+        exc.show()
+        return 2
+    except click.exceptions.Abort:
+        return 130
+    return 0
+
+
+@app.command()
+def menu() -> None:
+    """Interactive launcher — also what bare `repomedic` opens on a terminal."""
+    from repomedic.commands.menu import run_menu
+
+    raise typer.Exit(run_menu(_dispatch_cli, console))

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.7.0 (2026-07-11)
+
+### Added
+- Interactive startup menu: bare `repomedic` on a terminal (or `repomedic
+  menu` anywhere) opens a launcher for scan, sniff, agent handoff, fix
+  preview, debug, doctor, and selfcheck. Piped and scripted invocations are
+  unchanged — agents and CI never see a prompt.
+- "Fix with coding agent" handoff: scans, writes `repomedic-fixes.md`, and
+  launches the coding-agent CLI on it after an explicit y/N confirmation.
+  The agent gets a short constant prompt pointing at the report file, so
+  handoff token cost does not grow with the number of findings. Defaults to
+  `claude`; override with the `REPOMEDIC_AGENT` environment variable (read
+  from the user's environment only — never from the scanned repo's config).
+
 ## 0.6.0 (2026-07-11)
 
 Validation and verification release: RepoMedic now measures analyzer accuracy,

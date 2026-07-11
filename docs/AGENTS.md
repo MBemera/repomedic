@@ -200,6 +200,7 @@ portable installed-package integrity verdict.
 |---|---|---|
 | `repomedic sniff [PATH]` | Bug-sniff for agents | markdown → stdout, `--fail-on error` |
 | `repomedic [PATH]` / `repomedic scan [PATH]` | Full scan | rich terminal UI, `--fail-on never` |
+| `repomedic menu` | Interactive human launcher (also bare `repomedic` on a TTY; never appears for piped/scripted invocations, so agents always get the scan default) | rich terminal UI |
 | `repomedic baseline [PATH]` | Accept current findings into `.repomedic-baseline.json` | rich; `-o json` |
 | `repomedic run SCRIPT [ARGS…]` | Execute a script (`.py .js .mjs .cjs .sh .bash .rb .php .pl .lua`) and analyze the failure | JSON |
 | `repomedic debug SCRIPT [ARGS…]` | Capture a Python crash with bounded frames and redacted locals | JSON; `-o rich` / `-o markdown` |
